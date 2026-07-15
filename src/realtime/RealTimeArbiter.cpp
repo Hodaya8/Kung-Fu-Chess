@@ -1,4 +1,5 @@
 #include "realtime/RealTimeArbiter.hpp"
+#include <memory>
 
 void RealTimeArbiter::addMotion(const Motion& motion) {
     activeMotions.push_back(motion);
@@ -28,9 +29,9 @@ bool RealTimeArbiter::isPieceMoving(Position cell) const {
     }
     return false;
 }
-std::string RealTimeArbiter::advance_time(int ms, Board& board) {
+std::shared_ptr<Piece> RealTimeArbiter::advance_time(int ms, Board& board) {
     currentTime += ms;
-    std::string capturedPiece = ""; // כברירת מחדל, כלום לא נאכל
+    std::shared_ptr<Piece> capturedPiece = nullptr; // כברירת מחדל, כלום לא נאכל
 
     if (!activeMotions.empty()) {
         const auto& motion = activeMotions.front();
@@ -39,8 +40,8 @@ std::string RealTimeArbiter::advance_time(int ms, Board& board) {
             Position src = motion.getSource();
             Position dest = motion.getDestination();
             
-            std::string movingPieceName = board.at(src.getRow(), src.getCol());
-            std::string destPieceName = board.at(dest.getRow(), dest.getCol());
+            auto movingPiece = board.at(src.getRow(), src.getCol());
+            auto destPiece = board.at(dest.getRow(), dest.getCol());
             
             bool capturedByAirborne = false;
             // בדיקה האם יש כלי באוויר ביעד באותו זמן הגעה
@@ -52,18 +53,20 @@ std::string RealTimeArbiter::advance_time(int ms, Board& board) {
             }
 
             // אם יש כלי באוויר והם אויבים - הכלי באוויר אוכל את הכלי המגיע
-            if (capturedByAirborne && destPieceName != "." && movingPieceName[0] != destPieceName[0]) {
-                capturedPiece = movingPieceName;
-                board.setPiece(src.getRow(), src.getCol(), "."); // הסרת הכלי המגיע שהתקיף
+            if (capturedByAirborne && destPiece != nullptr && movingPiece->getColor() != destPiece->getColor()) {
+                capturedPiece = movingPiece;
+                board.setPiece(src.getRow(), src.getCol(), nullptr); // הסרת הכלי המגיע שהתקיף
             } else {
-                capturedPiece = destPieceName;
+                capturedPiece = destPiece;
                 board.movePiece(src, dest);
 
-                std::string finalPiece = board.at(dest.getRow(), dest.getCol());
-                if (finalPiece == "wP" && dest.getRow() == 0) {
-                    board.setPiece(dest.getRow(), dest.getCol(), "wQ");
-                } else if (finalPiece == "bP" && dest.getRow() == board.rows() - 1) {
-                    board.setPiece(dest.getRow(), dest.getCol(), "bQ");
+                auto finalPiece = board.at(dest.getRow(), dest.getCol());
+                if (finalPiece->getType() == PieceType::PAWN && finalPiece->getColor() == Color::WHITE && dest.getRow() == 0) {
+                    auto queen = std::make_shared<Piece>(finalPiece->getId(), Color::WHITE, PieceType::QUEEN, dest);
+                    board.setPiece(dest.getRow(), dest.getCol(), queen);
+                } else if (finalPiece->getType() == PieceType::PAWN && finalPiece->getColor() == Color::BLACK && dest.getRow() == board.rows() - 1) {
+                    auto queen = std::make_shared<Piece>(finalPiece->getId(), Color::BLACK, PieceType::QUEEN, dest);
+                    board.setPiece(dest.getRow(), dest.getCol(), queen);
                 }
             }
             activeMotions.clear();

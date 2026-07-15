@@ -1,6 +1,6 @@
 #include "realtime/Motion.hpp"
 
-// בנאי שמאתחל את המשתנים
+//בנאי 
 Motion::Motion(Position src, Position dest, int arrival)
     : source(src), destination(dest), arrivalTime(arrival) {}
 
@@ -19,7 +19,7 @@ int Motion::getArrivalTime() const {
     return arrivalTime;
 }
 
-// בדיקה האם הגענו ליעד
+// בדיקה האם הכלי הגיע ליעד, עפי זמן
 bool Motion::isFinished(int currentTime) const {
     return currentTime >= arrivalTime;
 }

@@ -1,5 +1,5 @@
 #include "input/Controller.hpp"
-
+#include <memory>
 
 Controller::Controller(
     Board& board,
@@ -36,7 +36,7 @@ void Controller::click(int x, int y)
         }
         return;
     }
-
+    
     // לחיצה כפולה על אותו כלי יוצרת בקשת Jump
     if (cell == selected)
     {
@@ -44,10 +44,11 @@ void Controller::click(int x, int y)
         hasSelection = false;
         return;
     }
-
+    auto currentPiece = board.at(cell.getRow(), cell.getCol());
+    auto selectedPiece = board.at(selected.getRow(), selected.getCol());
     // תיקון: מחליפים בחירה רק אם לחצנו על כלי אחר באותו הצבע!
-    if(board.hasPiece(cell) && 
-       board.at(cell.getRow(), cell.getCol())[0] == board.at(selected.getRow(), selected.getCol())[0])
+    if(currentPiece != nullptr && selectedPiece != nullptr && 
+       currentPiece->getColor() == selectedPiece->getColor())
     {
         selected = cell;
         hasSelection = true;

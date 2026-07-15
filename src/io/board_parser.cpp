@@ -29,65 +29,58 @@ bool BoardParser::isValidToken(const std::string& token)
 //המרת הקלט למבנה לוח
 Board BoardParser::parse(std::istream& input)
 {
-    //מטריצת עזר
-    std::vector<std::vector<std::string>> cells;
-
+    // 1. נכין מטריצה של אובייקטים (כפי שהלוח מצפה לקבל)
+    std::vector<std::vector<std::shared_ptr<Piece>>> cells;
     std::string line;
-
     bool readingBoard = false;
+    int row_index = 0;
 
-    //קריאה שורה אחר שורה
     while (std::getline(input, line))
     {
         while (!line.empty() && std::isspace(line.front()))
-        {
             line.erase(line.begin());
-        }
-        if (line == "Board:")
-        {
-            readingBoard = true;
-            continue;
-        }
-        
-        if (line == "Commands:")
-        {
-            break;
-        }
 
-        if (!readingBoard)
-            continue;
+        if (line == "Board:") { readingBoard = true; continue; }
+        if (line == "Commands:") break;
+        if (!readingBoard) continue;
         
-        //לקריאת מילים מתוך השורה
         std::stringstream ss(line);
-
-        //מייצג שורה בודדת
-        std::vector<std::string> row;
-
-        //מייצג תא בודד
         std::string cell;
+        
+        // 2. יצירת שורה של אובייקטים
+        std::vector<std::shared_ptr<Piece>> row;
+        int col_index = 0;
 
-        //קריאת מילה בכל פעם
         while (ss >> cell)
         {
-            //בדיקת תקינות
             if (!isValidToken(cell))
-            {
                 throw std::runtime_error("UNKNOWN_TOKEN");
+
+            // 3. המרה ישירה של הטוקן לאובייקט
+            if (cell == ".") {
+                row.push_back(nullptr);
+            } else {
+                Color color = (cell[0] == 'w') ? Color::WHITE : Color::BLACK;
+                PieceType type;
+                char t = cell[1];
+                if (t == 'R') type = PieceType::ROOK;
+                else if (t == 'B') type = PieceType::BISHOP;
+                else if (t == 'Q') type = PieceType::QUEEN;
+                else if (t == 'N') type = PieceType::KNIGHT;
+                else if (t == 'K') type = PieceType::KING;
+                else type = PieceType::PAWN;
+
+                row.push_back(std::make_shared<Piece>(row_index * 8 + col_index, color, type, Position(row_index, col_index)));
             }
-
-            row.push_back(cell);
+            col_index++;
         }
 
-        // אם המטריצה לא ריקה וגם מלבנית
         if (!cells.empty() && row.size() != cells[0].size())
-        {
             throw std::runtime_error("ROW_WIDTH_MISMATCH");
-        }
-
 
         cells.push_back(row);
+        row_index++;
     }
-
 
     return Board(cells);
 }

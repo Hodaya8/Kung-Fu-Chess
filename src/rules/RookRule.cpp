@@ -59,7 +59,7 @@ bool RookRule::canMove(
     )
     {
 
-        if(board.at(row,col) != ".")
+        if(board.at(row,col) != nullptr)
             return false;
 
 

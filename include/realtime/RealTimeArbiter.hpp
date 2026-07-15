@@ -22,6 +22,6 @@ public:
     void addJump(Position cell, int duration = 1000);
     bool isPieceJumping(Position cell) const;
     bool isPieceMoving(Position cell) const;
-    std::string advance_time(int ms, Board& board);
+    std::shared_ptr<Piece> advance_time(int ms, Board& board);
     int getCurrentTime() const { return currentTime; };
 };

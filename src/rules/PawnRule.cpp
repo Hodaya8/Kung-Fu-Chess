@@ -3,39 +3,41 @@
 
 bool PawnRule::canMove(const Board& board, Position from, Position to) const
 {
-    std::string piece = board.at(from.getRow(), from.getCol());
-    char color = piece[0]; 
-    int expectedRowDiff = (color == 'w') ? -1 : 1;
-    
-    // שורת ההתחלה היא תמיד השורה השנייה מהקצה של אותו צד
-    int startRow = (color == 'w') ? (board.rows() - 2) : 1;
+    auto piece = board.at(from.getRow(), from.getCol());
+    if (!piece) return false;
+
+    // 1. שימוש ב-getColor() במקום [0]
+    Color color = piece->getColor();
+    int expectedRowDiff = (color == Color::WHITE) ? -1 : 1;
+    int startRow = (color == Color::WHITE) ? (board.rows() - 2) : 1;
 
     int rowDiff = to.getRow() - from.getRow();
     int colDiff = to.getCol() - from.getCol();
 
-    // לוגיקת תנועה כפולה (צעד של 2 משבצות)
+    // לוגיקת תנועה כפולה
     if (colDiff == 0 && rowDiff == 2 * expectedRowDiff)
     {
-        // אם החייל לא נמצא פיזית בשורת ההתחלה שלו - המהלך הכפול אסור!
         if (from.getRow() != startRow) return false;
-
         int midRow = from.getRow() + expectedRowDiff;
-        if (board.at(midRow, from.getCol()) != ".") return false;
-        if (board.at(to.getRow(), to.getCol()) != ".") return false;
-
+        
+        // עובד מצוין עם nullptr
+        if (board.at(midRow, from.getCol()) != nullptr) return false;
+        if (board.at(to.getRow(), to.getCol()) != nullptr) return false;
         return true;
     }
 
     if (rowDiff != expectedRowDiff) return false;
 
-    std::string destPiece = board.at(to.getRow(), to.getCol());
+    // 2. עבודה ישירה עם האובייקט (לא string)
+    auto destPiece = board.at(to.getRow(), to.getCol());
 
     if (colDiff == 0) {
-        return destPiece == ".";
+        return destPiece == nullptr; // תקין
     }
 
     if (std::abs(colDiff) == 1) {
-        return destPiece != ".";
+        // 3. תנועה אלכסונית דורשת אכילה: וודאי שהיעד לא ריק (אבל במציאות צריך גם לבדוק צבע)
+        return destPiece != nullptr && destPiece->getColor() != color;
     }
 
     return false;

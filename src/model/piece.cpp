@@ -1,5 +1,5 @@
 #include "model/piece.hpp"
-
+#include <unordered_map>
 
 Piece::Piece(
     int id,
@@ -50,4 +50,33 @@ PieceState Piece::getState() const
 void Piece::setPosition(Position p)
 {
     position = p;
+}
+
+void Piece::setState(PieceState newState) 
+{
+    state = newState;
+}
+
+bool Piece::isAvailable() const {
+    return state == PieceState::IDLE;
+}
+
+std::string Piece::toString() const {
+    // מפה סטטית שנוצרת פעם אחת בלבד
+    static const std::unordered_map<PieceType, char> typeMap = {
+        {PieceType::KING,   'K'},
+        {PieceType::QUEEN,  'Q'},
+        {PieceType::ROOK,   'R'},
+        {PieceType::BISHOP, 'B'},
+        {PieceType::KNIGHT, 'N'},
+        {PieceType::PAWN,   'P'}
+    };
+
+    std::string s = "";
+    s += (color == Color::WHITE) ? 'w' : 'b';
+    
+    // שליפה מהירה מהמפה
+    s += typeMap.at(type);
+    
+    return s;
 }

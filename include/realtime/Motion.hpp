@@ -1,7 +1,6 @@
-#ifndef MOTION_HPP
-#define MOTION_HPP
+#pragma once
 
-#include "model/Position.hpp" 
+#include "model/position.hpp" 
 
 class Motion {
 private:
@@ -20,4 +19,3 @@ public:
     bool isFinished(int currentTime) const;
 };
 
-#endif

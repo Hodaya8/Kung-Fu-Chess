@@ -8,31 +8,28 @@ board(board), game_over(false)
 {
 }
 
-
+//מקדמת שעון מדומה
 void GameEngine::wait(int ms)
 {
-    // המנוע מקבל דיווח על אכילה מה-Arbiter
-    std::string capturedPiece = arbiter.advance_time(ms, board);
-    handlePromotion();
-    // המנוע מפרש את הדיווח: האם זה מלך?
-    if (capturedPiece == "wK" || capturedPiece == "bK") {
-        game_over = true; // המנוע הוא זה שמחליט שהמשחק נגמר
+    //מתקבל דיווח אם מישהו נאכך ונבדק אם זה המלך שאז נגמר המשחר
+    auto capturedPiece = arbiter.advance_time(ms, board);
+
+    if (capturedPiece != nullptr &&capturedPiece->getType() == PieceType::KING) {
+        game_over = true; 
     }
 }
 
+
+
 void GameEngine::requestMove(Position source, Position destination)
 {
-    if (game_over) return;
+    if (game_over||arbiter.has_active_motion()) return;
+    
+    auto piece = board.at(source.getRow(), source.getCol());
+    
+    if (piece == nullptr) return; // אין כלי במשבצת המקור
 
-    // חוק המסלול המשותף: דחיית בקשה אם כבר יש תנועה באוויר
-    if (arbiter.has_active_motion()) {
-        return;
-    }
-
-    const std::string& piece = board.at(source.getRow(), source.getCol());
-    if (piece == ".") return; // אין כלי במשבצת המקור
-
-    // אם הלוח פנוי והמהלך חוקי לפי החוקים הכלליים של הכלים
+    // אם הלוח פנוי והמהלך חוקי     
     if (ruleEngine.isLegalMove(piece, source, destination, board))
     {
         int travelTime = ruleEngine.getTravelTime(piece, source, destination);
@@ -43,31 +40,34 @@ void GameEngine::requestMove(Position source, Position destination)
     }
 }
 
+//פונקציית קפיצת כלי
 void GameEngine::requestJump(Position cell)
 {
     if (game_over) return;
 
-    // חוק 1: כלי שנאכל (לא קיים פיזית על הלוח) לא יכול לקפוץ
     if (!board.hasPiece(cell)) return;
 
-    // חוק 2: כלי שנמצא כרגע באמצע תנועה (כלומר, הוא המקור של Motion פעיל) לא יכול לקפוץ
     if (arbiter.isPieceMoving(cell)) return;
 
-    // אם הכל תקין, רושמים את הקפיצה בבורר למשך 1000 מילישניות (שנייה אחת)
     arbiter.addJump(cell, 1000);
 }
 
+//הכתרת חייל למלכה
 void GameEngine::handlePromotion()
 {
     int lastRow = board.rows() - 1;
+    //חייל לבן
     for (int col = 0; col < board.cols(); ++col) {
-        if (board.at(0, col) == "wP") {
-            board.setPiece(0, col, "wQ");
+        auto pWhite = board.at(0, col);
+        if (pWhite && pWhite->getType() == PieceType::PAWN && pWhite->getColor() == Color::WHITE) {
+            auto queen = std::make_shared<Piece>(pWhite->getId(), Color::WHITE, PieceType::QUEEN, Position(0, col));
+            board.setPiece(0, col, queen);
         }
-    }
-    for (int col = 0; col < board.cols(); ++col) {
-        if (board.at(lastRow, col) == "bP") {
-            board.setPiece(lastRow, col, "bQ");
+    //חייל שחור
+    auto pBlack = board.at(lastRow, col);
+        if (pBlack && pBlack->getType() == PieceType::PAWN && pBlack->getColor() == Color::BLACK) {
+            auto queen = std::make_shared<Piece>(pBlack->getId(), Color::BLACK, PieceType::QUEEN, Position(lastRow, col));
+            board.setPiece(lastRow, col, queen);
         }
     }
 }

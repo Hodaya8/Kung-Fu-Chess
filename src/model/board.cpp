@@ -1,7 +1,8 @@
 #include "model/board.hpp"
-
-Board::Board(const std::vector<std::vector<std::string>>& board)
-    : cells(board)
+#include "model/piece.hpp"
+#include <memory>
+Board::Board(const std::vector<std::vector<std::shared_ptr<Piece>>>& cells) 
+    : cells(cells) // השמה פשוטה
 {
 }
 
@@ -16,18 +17,17 @@ int Board::cols() const
     return cells[0].size();
 }
 
-const std::string& Board::at(int row, int col) const
+const std::shared_ptr<Piece>& Board::at(int row, int col) const
 {
     return cells[row][col];
 }
 
 bool Board::hasPiece(Position pos) const
 {
-    return cells[pos.getRow()][pos.getCol()] != ".";
+    return cells[pos.getRow()][pos.getCol()] != nullptr;
 }
 
-// מימוש הפונקציה החדשה
-void Board::setPiece(int row, int col, const std::string& piece)
+void Board::setPiece(int row, int col, std::shared_ptr<Piece> piece)
 {
     if (row >= 0 && row < rows() && col >= 0 && col < cols()) {
         cells[row][col] = piece;
@@ -36,6 +36,10 @@ void Board::setPiece(int row, int col, const std::string& piece)
 
 void Board::movePiece(Position source, Position destination)
 {
+    
     cells[destination.getRow()][destination.getCol()] = cells[source.getRow()][source.getCol()];
-    cells[source.getRow()][source.getCol()] = ".";
+    if (cells[destination.getRow()][destination.getCol()] != nullptr) {
+        cells[destination.getRow()][destination.getCol()]->setPosition(destination);
+    }
+    cells[source.getRow()][source.getCol()] = nullptr;
 }

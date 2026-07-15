@@ -13,21 +13,21 @@ class RuleEngine
 private:
 // פונקציה המחזירה את שם הכלי  
     std::unique_ptr<PieceRule> getRule(
-        const std::string& piece
+        std::shared_ptr<Piece> piece
     ) const;
 
 
 public:
     // האם זו תנועה חוקית
     bool isLegalMove(
-        const std::string& piece,
+        std::shared_ptr<Piece> piece,
         Position from,
         Position to,
         const Board& board
     ) const;
 
     int getTravelTime(
-    const std::string& piece,
+    std::shared_ptr<Piece> piece,
     Position from,
     Position to
     ) const;
