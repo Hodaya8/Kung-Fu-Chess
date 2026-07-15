@@ -1,0 +1,10 @@
+# Compiled executables
+*.exe
+
+# Coverage temporary files
+*.gcda
+*.gcno
+*.gcov
+
+# Editor directories
+.vscode/
