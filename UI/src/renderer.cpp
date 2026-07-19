@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 #include <iostream>
 #include "engine/GameEngine.hpp"
+#include "input/Controller.hpp" 
 
 //הכנת הניתוב לתמונות הכלים
 Renderer::Renderer(const std::string& assetsDir) : cellSize(100) {
@@ -12,11 +13,6 @@ Renderer::Renderer(const std::string& assetsDir) : cellSize(100) {
         piecePaths[std::string("b") + type] = basePath + type + "B";
     }
 }
-
-#include "renderer.hpp"
-#include <iostream>
-#include "engine/GameEngine.hpp"
-#include "input/Controller.hpp" // וודאי שזה קיים
 
 void Renderer::render(const GameSnapshot& snapshot, const GameEngine& gameEngine, const Controller& controller) {
     try {
