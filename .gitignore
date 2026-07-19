@@ -16,3 +16,6 @@ lib/bin/
 
 # הגדרות מקומיות של עורך הקוד (VS Code)
 .vscode/
+
+
+lib/include/
