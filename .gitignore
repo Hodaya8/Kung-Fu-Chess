@@ -1,10 +1,18 @@
-# Compiled executables
+# קבצי הרצה
 *.exe
+chess.exe
 
-# Coverage temporary files
-*.gcda
-*.gcno
-*.gcov
+# תיקיות בנייה (Build) וקבצים מקומפלים של CMake
+UI/build/
+build/
+*.o
+*.out
 
-# Editor directories
+# דוחות כיסוי קוד שנוצרים אוטומטית
+LOGIC/coverage_report/
+
+# בינאריים של ספריות (אם הם מקומפלים מקומית)
+lib/bin/
+
+# הגדרות מקומיות של עורך הקוד (VS Code)
 .vscode/
