@@ -89,11 +89,11 @@ public:
     void requestJump(Position cell);
 
     void wait(int milliseconds);
-    void handlePromotion();
+    // void handlePromotion();
 
     GameSnapshot getSnapshot() const;
 
-    bool hasActiveMotion() const;
+    // bool hasActiveMotion() const;
 
     bool isGameOver() const
     {

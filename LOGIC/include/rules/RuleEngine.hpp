@@ -1,25 +1,22 @@
 #pragma once
 
-#include "model/piece.hpp"
-#include "model/Position.hpp"
-#include "rules/PieceRule.hpp"
-
-#include <string>
 #include <memory>
 
+#include "model/board.hpp"
+#include "model/piece.hpp"
+#include "model/position.hpp"
+#include "rules/PieceRule.hpp"
 
 class RuleEngine
 {
-
 private:
-// פונקציה המחזירה את שם הכלי  
+    // יצירת חוק התנועה המתאים לסוג הכלי
     std::unique_ptr<PieceRule> getRule(
         std::shared_ptr<Piece> piece
     ) const;
 
-
 public:
-    // האם זו תנועה חוקית
+    // בדיקה האם התנועה חוקית
     bool isLegalMove(
         std::shared_ptr<Piece> piece,
         Position from,
@@ -27,15 +24,15 @@ public:
         const Board& board
     ) const;
 
+    // החזרת זמן התנועה של הכלי
     int getTravelTime(
-    std::shared_ptr<Piece> piece,
-    Position from,
-    Position to
+        std::shared_ptr<Piece> piece,
+        Position from,
+        Position to
     ) const;
 
+    // בדיקה האם יציאת הכלי מסיימת את המשחק
     bool isGameOver(
-        const std::shared_ptr<Piece>& capturedPiece
+        PieceType removedPieceType
     ) const;
-
-
 };

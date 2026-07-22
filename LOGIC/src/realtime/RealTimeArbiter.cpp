@@ -1,14 +1,21 @@
 #include "realtime/RealTimeArbiter.hpp"
-#include "model/piece.hpp" 
+#include "model/piece.hpp"
+#include "model/piece_removed_info.hpp"
+
 #include <memory>
+#include <vector>
 
-void RealTimeArbiter::addMotion(const Motion& motion) { activeMotions.push_back(motion); }
+void RealTimeArbiter::addMotion(const Motion& motion)
+{
+    activeMotions.push_back(motion);
+}
 
-bool RealTimeArbiter::has_active_motion() const { return !activeMotions.empty(); }
+bool RealTimeArbiter::has_active_motion() const
+{
+    return !activeMotions.empty();
+}
 
-void RealTimeArbiter::addJump(
-    Position cell,
-    int duration)
+void RealTimeArbiter::addJump(Position cell, int duration)
 {
     activeJumps.push_back({
         cell,
@@ -17,120 +24,275 @@ void RealTimeArbiter::addJump(
     });
 }
 
-bool RealTimeArbiter::isPieceJumping(Position cell) const {
-    for (const auto& j : activeJumps) { 
-        if (j.cell.getRow() == cell.getRow() && j.cell.getCol() == cell.getCol()) return true; 
-    }
-    return false;
-}
-
-bool RealTimeArbiter::isPieceMoving(Position cell) const {
-    for (const auto& m : activeMotions) { 
-        if (m.getSource().getRow() == cell.getRow() && m.getSource().getCol() == cell.getCol()) return true; 
-    }
-    return false;
-}
-
-//פונקציית הכתרה
-std::shared_ptr<Piece> RealTimeArbiter::handlePromotion(Board& board, Position dest, std::shared_ptr<Piece> piece) {
-    if (piece && piece->getType() == PieceType::PAWN) {
-        bool promote = (piece->getColor() == Color::WHITE && dest.getRow() == 0) || 
-                       (piece->getColor() == Color::BLACK && dest.getRow() == board.rows() - 1);
-        if (promote) {
-            auto promotedPiece = std::make_shared<Piece>(piece->getId(), piece->getColor(), PieceType::QUEEN, dest);
-            board.setPiece(dest.getRow(), dest.getCol(), promotedPiece);
-            return promotedPiece; // החזרת המלכה החדשה
+bool RealTimeArbiter::isPieceJumping(Position cell) const
+{
+    for (const auto& jump : activeJumps)
+    {
+        if (jump.cell.getRow() == cell.getRow() &&
+            jump.cell.getCol() == cell.getCol())
+        {
+            return true;
         }
     }
-    return piece; // אם אין הכתרה, מחזירים את הכלי כפי שהוא
+
+    return false;
 }
 
-std::shared_ptr<Piece> RealTimeArbiter::advance_time(int ms, Board& board) {
-    currentTime += ms;
-    std::shared_ptr<Piece> capturedPiece = nullptr; 
+bool RealTimeArbiter::isPieceMoving(Position cell) const
+{
+    for (const auto& motion : activeMotions)
+    {
+        if (motion.getSource().getRow() == cell.getRow() &&
+            motion.getSource().getCol() == cell.getCol())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// פונקציית הכתרה
+std::shared_ptr<Piece> RealTimeArbiter::handlePromotion(
+    Board& board,
+    Position destination,
+    std::shared_ptr<Piece> piece)
+{
+    if (piece && piece->getType() == PieceType::PAWN)
+    {
+        bool shouldPromote =
+            (piece->getColor() == Color::WHITE &&
+             destination.getRow() == 0) ||
+            (piece->getColor() == Color::BLACK &&
+             destination.getRow() == board.rows() - 1);
+
+        if (shouldPromote)
+        {
+            auto promotedPiece = std::make_shared<Piece>(
+                piece->getId(),
+                piece->getColor(),
+                PieceType::QUEEN,
+                destination
+            );
+
+            board.setPiece(
+                destination.getRow(),
+                destination.getCol(),
+                promotedPiece
+            );
+
+            return promotedPiece;
+        }
+    }
+
+    return piece;
+}
+
+std::vector<PieceRemovedInfo> RealTimeArbiter::advance_time(
+    int milliseconds,
+    Board& board)
+{
+    currentTime += milliseconds;
+
+    std::vector<PieceRemovedInfo> removedPieces;
     std::vector<Motion> remainingMotions;
 
-    // --- טיפול בכלים שבאוויר ---
-    for (const auto& motion : activeMotions) {
-        if (currentTime < motion.getArrivalTime()) {
-            remainingMotions.push_back(motion); 
+    // טיפול בתנועות הפעילות
+    for (const auto& motion : activeMotions)
+    {
+        if (currentTime < motion.getArrivalTime())
+        {
+            remainingMotions.push_back(motion);
             continue;
         }
 
-        Position src = motion.getSource();
-        Position dest = motion.getDestination();
-        auto movingPiece = board.at(src.getRow(), src.getCol());
-        auto destPiece = board.at(dest.getRow(), dest.getCol());
-        
-        // בדיקת התחמקות של כלי שקפץ ביעד
-        bool capturedByAirborne = false;
-        for (const auto& jump : activeJumps) {
-            if (jump.cell.getRow() == dest.getRow() && jump.cell.getCol() == dest.getCol() && motion.getArrivalTime() <= jump.arrivalTime) {
-                capturedByAirborne = true;
+        Position source = motion.getSource();
+        Position destination = motion.getDestination();
+
+        auto movingPiece = board.at(
+            source.getRow(),
+            source.getCol()
+        );
+
+        if (!movingPiece)
+        {
+            continue;
+        }
+
+        auto destinationPiece = board.at(
+            destination.getRow(),
+            destination.getCol()
+        );
+
+        // בדיקה האם הכלי במשבצת היעד נמצא בקפיצה
+        bool destinationIsJumping = false;
+
+        for (const auto& jump : activeJumps)
+        {
+            if (jump.cell.getRow() == destination.getRow() &&
+                jump.cell.getCol() == destination.getCol() &&
+                motion.getArrivalTime() <= jump.arrivalTime)
+            {
+                destinationIsJumping = true;
                 break;
             }
         }
 
-        // ביטול המהלך אם נאכל באוויר על ידי אויב
-        if (capturedByAirborne && destPiece && movingPiece && movingPiece->getColor() != destPiece->getColor()) {
-            capturedPiece = movingPiece;
-            board.setPiece(src.getRow(), src.getCol(), nullptr); 
-            continue; 
+        // הכלי שבתנועה יוצא מהלוח
+        if (destinationIsJumping &&
+            destinationPiece &&
+            movingPiece->getColor() != destinationPiece->getColor())
+        {
+            removedPieces.push_back({
+                movingPiece->getType(),
+                movingPiece->getColor(),
+                destinationPiece->getColor()
+            });
+
+            board.setPiece(
+                source.getRow(),
+                source.getCol(),
+                nullptr
+            );
+
+            continue;
         }
 
-        // התנגשות עם חבר (אותו צבע)
-        if (destPiece && movingPiece && movingPiece->getColor() == destPiece->getColor()) {
-            int dr = dest.getRow() - src.getRow();
-            int dc = dest.getCol() - src.getCol();
-            int stepRow = (dr > 0) ? 1 : ((dr < 0) ? -1 : 0);
-            int stepCol = (dc > 0) ? 1 : ((dc < 0) ? -1 : 0);
-            
-            Position newDest(dest.getRow() - stepRow, dest.getCol() - stepCol);
-            
-            if (movingPiece->getType() == PieceType::KNIGHT) {
-                newDest = src; // פרש חוזר למקור
-            } else {
-                while (board.hasPiece(newDest) && (newDest.getRow() != src.getRow() || newDest.getCol() != src.getCol())) {
-                    newDest = Position(newDest.getRow() - stepRow, newDest.getCol() - stepCol);
+        // משבצת היעד מכילה כלי מאותו הצבע
+        if (destinationPiece &&
+            movingPiece->getColor() == destinationPiece->getColor())
+        {
+            int rowDifference =
+                destination.getRow() - source.getRow();
+
+            int columnDifference =
+                destination.getCol() - source.getCol();
+
+            int rowStep =
+                rowDifference > 0
+                    ? 1
+                    : (rowDifference < 0 ? -1 : 0);
+
+            int columnStep =
+                columnDifference > 0
+                    ? 1
+                    : (columnDifference < 0 ? -1 : 0);
+
+            Position newDestination(
+                destination.getRow() - rowStep,
+                destination.getCol() - columnStep
+            );
+
+            if (movingPiece->getType() == PieceType::KNIGHT)
+            {
+                newDestination = source;
+            }
+            else
+            {
+                while (
+                    board.hasPiece(newDestination) &&
+                    (
+                        newDestination.getRow() != source.getRow() ||
+                        newDestination.getCol() != source.getCol()
+                    )
+                )
+                {
+                    newDestination = Position(
+                        newDestination.getRow() - rowStep,
+                        newDestination.getCol() - columnStep
+                    );
                 }
             }
-            dest = newDest;
-            destPiece = board.at(dest.getRow(), dest.getCol()); 
+
+            destination = newDestination;
+
+            destinationPiece = board.at(
+                destination.getRow(),
+                destination.getCol()
+            );
         }
 
-        // נחיתה או אכילה רגילה
-        if (destPiece && movingPiece && movingPiece->getColor() != destPiece->getColor()) {
-            capturedPiece = destPiece;
+        // כלי מהצד האחר יוצא מהלוח
+        if (destinationPiece &&
+            movingPiece->getColor() != destinationPiece->getColor())
+        {
+            removedPieces.push_back({
+                destinationPiece->getType(),
+                destinationPiece->getColor(),
+                movingPiece->getColor()
+            });
         }
-        
-        // הזזת הכלי פיזית
-        if (src.getRow() != dest.getRow() || src.getCol() != dest.getCol()) {
-            auto sanityCheck = board.at(dest.getRow(), dest.getCol());
-            if (sanityCheck == nullptr || sanityCheck->getColor() != movingPiece->getColor()) {
-                board.movePiece(src, dest);
+
+        // עדכון הלוח
+        bool positionChanged =
+            source.getRow() != destination.getRow() ||
+            source.getCol() != destination.getCol();
+
+        if (positionChanged)
+        {
+            auto pieceAtDestination = board.at(
+                destination.getRow(),
+                destination.getCol()
+            );
+
+            if (!pieceAtDestination ||
+                pieceAtDestination->getColor() != movingPiece->getColor())
+            {
+                board.movePiece(
+                    source,
+                    destination
+                );
             }
         }
 
-        // הכתרה (בקריאה אלגנטית אחת) + עונש מנוחה
-        auto finalPiece = board.at(dest.getRow(), dest.getCol());
-        finalPiece = handlePromotion(board, dest, finalPiece);
-        
-        if (finalPiece) finalPiece->setState(PieceState::long_rest);
-    }
-    
-    activeMotions = remainingMotions;
+        // בדיקת הכתרה ועדכון מצב הכלי
+        auto finalPiece = board.at(
+            destination.getRow(),
+            destination.getCol()
+        );
 
-    // --- טיפול בסיום קפיצות ---
-    std::vector<ActiveJump> remainingJumps;
-    for (const auto& jump : activeJumps) {
-        if (currentTime < jump.arrivalTime) {
-            remainingJumps.push_back(jump);
-        } else {
-            auto piece = board.at(jump.cell.getRow(), jump.cell.getCol());
-            if (piece) piece->setState(PieceState::short_rest);
+        finalPiece = handlePromotion(
+            board,
+            destination,
+            finalPiece
+        );
+
+        if (finalPiece)
+        {
+            finalPiece->setState(
+                PieceState::long_rest
+            );
         }
     }
+
+    activeMotions = remainingMotions;
+
+    // טיפול בסיום קפיצות
+    std::vector<ActiveJump> remainingJumps;
+
+    for (const auto& jump : activeJumps)
+    {
+        if (currentTime < jump.arrivalTime)
+        {
+            remainingJumps.push_back(jump);
+        }
+        else
+        {
+            auto piece = board.at(
+                jump.cell.getRow(),
+                jump.cell.getCol()
+            );
+
+            if (piece)
+            {
+                piece->setState(
+                    PieceState::short_rest
+                );
+            }
+        }
+    }
+
     activeJumps = remainingJumps;
-    
-    return capturedPiece; 
+
+    return removedPieces;
 }
