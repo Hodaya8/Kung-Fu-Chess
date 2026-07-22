@@ -7,6 +7,7 @@
 #include "input/Controller.hpp"
 #include "model/board.hpp"
 #include "model/game_snapshot.hpp"
+#include "model/piece.hpp"
 #include "model/position.hpp"
 
 class GameSession
@@ -18,19 +19,31 @@ private:
     Board board;
     GameEngine engine;
     BoardMapper mapper;
-    Controller controller;
+
+    Controller whiteController;
+    Controller blackController;
 
     static Board createInitialBoard();
+
+    Controller& controllerFor(
+        Color playerColor
+    );
+
+    const Controller& controllerFor(
+        Color playerColor
+    ) const;
 
 public:
     GameSession();
 
     void handleLeftClick(
+        Color playerColor,
         int x,
         int y
     );
 
     void handleRightClick(
+        Color playerColor,
         int x,
         int y
     );
@@ -44,5 +57,7 @@ public:
     bool isGameOver() const;
 
     std::optional<Position>
-    getSelectedPosition() const;
+    getSelectedPosition(
+        Color playerColor
+    ) const;
 };

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "model/game_snapshot.hpp"
+#include "model/piece.hpp"
 #include "model/position.hpp"
 
 namespace JsonProtocol
@@ -21,19 +22,22 @@ namespace JsonProtocol
         ClickButton button;
     };
 
-    // GameSnapshot למחרוזת JSON
     std::string createGameStateMessage(
         const GameSnapshot& snapshot,
         bool gameOver
     );
 
-    // מצב בחירה למחרוזת JSON
     std::string createSelectionStateMessage(
         const std::optional<Position>&
             selectedPosition
     );
 
-    // מחרוזת JSON לבקשת קליק
+    std::string createPlayerAssignedMessage(
+        Color playerColor
+    );
+
+    std::string createGameFullMessage();
+
     ClickRequest parseClickRequest(
         const std::string& message
     );

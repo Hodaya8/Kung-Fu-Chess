@@ -28,15 +28,13 @@ UiApplication::UiApplication(
       renderer(assetsDirectory),
       firstStateRendered(false),
       mouseInput(
-          [this](
-              const MouseClick& click)
+          [this](const MouseClick& click)
           {
               handleMouseClick(click);
           }
       ),
       webSocketClient(
-          [this](
-              const std::string& message)
+          [this](const std::string& message)
           {
               handleServerMessage(message);
           }
@@ -116,6 +114,31 @@ void UiApplication::handleServerMessage(
                 "messageType",
                 std::string{}
             );
+
+        if (messageType == "PlayerAssigned")
+        {
+            std::cout
+                << "[UI] Assigned side: "
+                << json.at("side")
+                       .get<std::string>()
+                << std::endl;
+
+            return;
+        }
+
+        if (
+            messageType ==
+            "ConnectionRejected"
+        )
+        {
+            std::cerr
+                << "[UI] Connection rejected: "
+                << json.at("reason")
+                       .get<std::string>()
+                << std::endl;
+
+            return;
+        }
 
         if (messageType == "GameState")
         {
@@ -207,7 +230,6 @@ void UiApplication::renderLatestState()
     std::optional<Position>
         selectionForRendering;
 
-    // נועלים רק בזמן העתקת המידע.
     {
         std::lock_guard<std::mutex>
             lock(serverStateMutex);
@@ -240,14 +262,12 @@ void UiApplication::renderLatestState()
 
     const RenderModel renderModel =
         buildRenderModel(
-            stateForRendering
-                ->snapshot
+            stateForRendering->snapshot
         );
 
     renderer.render(
         renderModel,
-        stateForRendering
-            ->gameOver,
+        stateForRendering->gameOver,
         selectionForRendering
     );
 }

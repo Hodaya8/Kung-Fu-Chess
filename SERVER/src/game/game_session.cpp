@@ -32,26 +32,61 @@ GameSession::GameSession()
           BOARD_ROWS,
           BOARD_COLUMNS
       ),
-      controller(
+      whiteController(
           board,
           mapper,
-          engine
+          engine,
+          Color::WHITE
+      ),
+      blackController(
+          board,
+          mapper,
+          engine,
+          Color::BLACK
       )
 {
 }
 
+Controller& GameSession::controllerFor(
+    Color playerColor)
+{
+    return playerColor == Color::WHITE
+        ? whiteController
+        : blackController;
+}
+
+const Controller& GameSession::controllerFor(
+    Color playerColor) const
+{
+    return playerColor == Color::WHITE
+        ? whiteController
+        : blackController;
+}
+
 void GameSession::handleLeftClick(
+    Color playerColor,
     int x,
     int y)
 {
-    controller.click(x, y);
+    controllerFor(
+        playerColor
+    ).click(
+        x,
+        y
+    );
 }
 
 void GameSession::handleRightClick(
+    Color playerColor,
     int x,
     int y)
 {
-    controller.jump(x, y);
+    controllerFor(
+        playerColor
+    ).jump(
+        x,
+        y
+    );
 }
 
 void GameSession::advanceTime(
@@ -71,8 +106,12 @@ bool GameSession::isGameOver() const
 }
 
 std::optional<Position>
-GameSession::getSelectedPosition() const
+GameSession::getSelectedPosition(
+    Color playerColor) const
 {
+    const Controller& controller =
+        controllerFor(playerColor);
+
     if (!controller.isSelected())
     {
         return std::nullopt;

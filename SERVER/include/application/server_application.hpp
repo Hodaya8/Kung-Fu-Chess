@@ -1,13 +1,14 @@
 #pragma once
 
+#include <map>
 #include <memory>
-#include <set>
 #include <string>
 
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
 #include "game/game_session.hpp"
+#include "model/piece.hpp"
 
 class KungFuChessServerApplication
 {
@@ -26,10 +27,11 @@ private:
     Server server;
     GameSession game;
 
-    std::set<
+    std::map<
         ConnectionHandle,
+        Color,
         std::owner_less<ConnectionHandle>
-    > connections;
+    > players;
 
     void configureServer();
 
@@ -46,10 +48,15 @@ private:
         Server::message_ptr message
     );
 
+    bool isSideAssigned(
+        Color playerColor
+    ) const;
+
     void broadcastGameState();
 
     void sendSelectionState(
-        ConnectionHandle connection
+        ConnectionHandle connection,
+        Color playerColor
     );
 
     void sendTextMessage(

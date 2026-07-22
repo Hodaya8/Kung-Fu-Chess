@@ -3,6 +3,7 @@
 #include "model/Board.hpp"
 #include "input/BoardMapper.hpp"
 #include "engine/GameEngine.hpp"
+#include "model/piece.hpp"
 
 class Controller
 {
@@ -14,14 +15,23 @@ private:
     GameEngine& engine;
     bool hasSelection;
     Position selected;
+    Color playerColor;
 
+    bool isPlayerPiece(
+        const Position& cell
+    ) const;
+
+    void selectCell(
+        const Position& cell
+    );
 
 public:
 
     Controller(
         Board& board,
         BoardMapper& mapper,
-        GameEngine& engine
+        GameEngine& engine,
+        Color playerColor
     );
 
 

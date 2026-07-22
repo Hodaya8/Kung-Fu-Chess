@@ -2,18 +2,19 @@
 
 #include <exception>
 #include <iostream>
-#include <optional>
 #include <string>
 
 #include "protocol/json_protocol.hpp"
 
-KungFuChessServerApplication::KungFuChessServerApplication(
-    int port)
+KungFuChessServerApplication::
+    KungFuChessServerApplication(
+        int port)
     : port(port)
 {
 }
 
-void KungFuChessServerApplication::configureServer()
+void KungFuChessServerApplication::
+    configureServer()
 {
     server.clear_access_channels(
         websocketpp::log::alevel::all
@@ -23,16 +24,14 @@ void KungFuChessServerApplication::configureServer()
     server.set_reuse_addr(true);
 
     server.set_open_handler(
-        [this](
-            ConnectionHandle connection)
+        [this](ConnectionHandle connection)
         {
             onOpen(connection);
         }
     );
 
     server.set_close_handler(
-        [this](
-            ConnectionHandle connection)
+        [this](ConnectionHandle connection)
         {
             onClose(connection);
         }
@@ -96,29 +95,104 @@ int KungFuChessServerApplication::run()
     }
 }
 
+bool KungFuChessServerApplication::
+    isSideAssigned(
+        Color playerColor) const
+{
+    for (const auto& player : players)
+    {
+        if (player.second == playerColor)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void KungFuChessServerApplication::onOpen(
     ConnectionHandle connection)
 {
-    connections.insert(connection);
+    if (players.size() >= 2)
+    {
+        sendTextMessage(
+            connection,
+            JsonProtocol::
+                createGameFullMessage()
+        );
+
+        websocketpp::lib::error_code error;
+
+        server.close(
+            connection,
+            websocketpp::close::status::normal,
+            "Game is full.",
+            error
+        );
+
+        if (error)
+        {
+            std::cerr
+                << "[SERVER] Failed to close "
+                << "extra connection: "
+                << error.message()
+                << std::endl;
+        }
+
+        return;
+    }
+
+    const Color playerColor =
+        isSideAssigned(Color::WHITE)
+            ? Color::BLACK
+            : Color::WHITE;
+
+    players.emplace(
+        connection,
+        playerColor
+    );
+
+    sendTextMessage(
+        connection,
+        JsonProtocol::
+            createPlayerAssignedMessage(
+                playerColor
+            )
+    );
 
     std::cout
-        << "[SERVER] Client connected. Total: "
-        << connections.size()
+        << "[SERVER] Player connected as "
+        << (
+            playerColor == Color::WHITE
+                ? "white"
+                : "black"
+        )
+        << ". Total players: "
+        << players.size()
         << std::endl;
 
     broadcastGameState();
 
-    sendSelectionState(connection);
+    sendSelectionState(
+        connection,
+        playerColor
+    );
 }
 
 void KungFuChessServerApplication::onClose(
     ConnectionHandle connection)
 {
-    connections.erase(connection);
+    const std::size_t removed =
+        players.erase(connection);
+
+    if (removed == 0)
+    {
+        return;
+    }
 
     std::cout
-        << "[SERVER] Client disconnected. Total: "
-        << connections.size()
+        << "[SERVER] Player disconnected. Total: "
+        << players.size()
         << std::endl;
 }
 
@@ -126,13 +200,23 @@ void KungFuChessServerApplication::onMessage(
     ConnectionHandle connection,
     Server::message_ptr message)
 {
+    const auto player =
+        players.find(connection);
+
+    if (player == players.end())
+    {
+        return;
+    }
+
     try
     {
-        const JsonProtocol::ClickRequest
-            request =
-                JsonProtocol::parseClickRequest(
-                    message->get_payload()
-                );
+        const JsonProtocol::ClickRequest request =
+            JsonProtocol::parseClickRequest(
+                message->get_payload()
+            );
+
+        const Color playerColor =
+            player->second;
 
         if (
             request.button ==
@@ -140,6 +224,7 @@ void KungFuChessServerApplication::onMessage(
         )
         {
             game.handleLeftClick(
+                playerColor,
                 request.x,
                 request.y
             );
@@ -147,20 +232,17 @@ void KungFuChessServerApplication::onMessage(
         else
         {
             game.handleRightClick(
+                playerColor,
                 request.x,
                 request.y
             );
         }
 
-        std::cout
-            << "[SERVER] Click received: ("
-            << request.x
-            << ", "
-            << request.y
-            << ")"
-            << std::endl;
+        sendSelectionState(
+            connection,
+            playerColor
+        );
 
-        sendSelectionState(connection);
         broadcastGameState();
     }
     catch (
@@ -174,9 +256,10 @@ void KungFuChessServerApplication::onMessage(
     }
 }
 
-void KungFuChessServerApplication::broadcastGameState()
+void KungFuChessServerApplication::
+    broadcastGameState()
 {
-    if (connections.empty())
+    if (players.empty())
     {
         return;
     }
@@ -190,26 +273,26 @@ void KungFuChessServerApplication::broadcastGameState()
             game.isGameOver()
         );
 
-    for (const auto& connection :
-         connections)
+    for (const auto& player : players)
     {
         sendTextMessage(
-            connection,
+            player.first,
             message
         );
     }
 }
 
-void KungFuChessServerApplication::sendSelectionState(
-    ConnectionHandle connection)
+void KungFuChessServerApplication::
+    sendSelectionState(
+        ConnectionHandle connection,
+        Color playerColor)
 {
-    const std::optional<Position> selected =
-        game.getSelectedPosition();
-
     const std::string message =
         JsonProtocol::
             createSelectionStateMessage(
-                selected
+                game.getSelectedPosition(
+                    playerColor
+                )
             );
 
     sendTextMessage(
@@ -218,9 +301,10 @@ void KungFuChessServerApplication::sendSelectionState(
     );
 }
 
-void KungFuChessServerApplication::sendTextMessage(
-    ConnectionHandle connection,
-    const std::string& message)
+void KungFuChessServerApplication::
+    sendTextMessage(
+        ConnectionHandle connection,
+        const std::string& message)
 {
     websocketpp::lib::error_code error;
 
@@ -240,7 +324,8 @@ void KungFuChessServerApplication::sendTextMessage(
     }
 }
 
-void KungFuChessServerApplication::scheduleGameTick()
+void KungFuChessServerApplication::
+    scheduleGameTick()
 {
     server.set_timer(
         GAME_TICK_MS,

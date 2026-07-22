@@ -37,6 +37,14 @@ namespace
             "Unknown piece state."
         );
     }
+
+    std::string colorToString(
+        Color color)
+    {
+        return color == Color::WHITE
+            ? "white"
+            : "black";
+    }
 }
 
 std::string
@@ -141,6 +149,43 @@ JsonProtocol::createSelectionStateMessage(
         response["col"] =
             selectedPosition->getCol();
     }
+
+    return response.dump();
+}
+
+std::string
+JsonProtocol::createPlayerAssignedMessage(
+    Color playerColor)
+{
+    const Json response = {
+        {
+            "messageType",
+            "PlayerAssigned"
+        },
+        {
+            "side",
+            colorToString(
+                playerColor
+            )
+        }
+    };
+
+    return response.dump();
+}
+
+std::string
+JsonProtocol::createGameFullMessage()
+{
+    const Json response = {
+        {
+            "messageType",
+            "ConnectionRejected"
+        },
+        {
+            "reason",
+            "GameFull"
+        }
+    };
 
     return response.dump();
 }
