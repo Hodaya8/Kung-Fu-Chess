@@ -1,20 +1,33 @@
-#ifndef USER_REPOSITORY_HPP
-#define USER_REPOSITORY_HPP
+#pragma once
 
+#include <optional>
 #include <string>
-#include "../tables/user_class.hpp"
-#include "sqlite3.h"
 
-class UserRepository {
+#include "database/databaseManager.hpp"
+#include "tables/user_class.hpp"
+
+class UserRepository
+{
+private:
+    DatabaseManager& databaseManager;
+
 public:
-    // יצירת טבלת המשתמשים אם אינה קיימת
-    static bool createTable(sqlite3* db);
+    explicit UserRepository(
+        DatabaseManager& databaseManager
+    );
 
-    // הוספת משתמש חדש
-    static bool addUser(sqlite3* db, const User& user);
+    bool createTable();
 
-    // חיפוש משתמש לפי שמות משתמש
-    static bool getUser(sqlite3* db, const std::string& username, User& outUser);
+    bool addUser(
+        const User& user
+    );
+
+    std::optional<User> findByUsername(
+        const std::string& username
+    ) const;
+
+    bool updateRating(
+        int userId,
+        int newRating
+    );
 };
-
-#endif // USER_REPOSITORY_HPP

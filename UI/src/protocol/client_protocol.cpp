@@ -6,9 +6,32 @@
 
 using Json = nlohmann::json;
 
-std::string ClientProtocol::
-    createClickRequestMessage(
-        const MouseClick& click)
+std::string
+ClientProtocol::createLoginRequestMessage(
+    const std::string& username,
+    const std::string& password)
+{
+    const Json request = {
+        {
+            "messageType",
+            "LoginRequest"
+        },
+        {
+            "username",
+            username
+        },
+        {
+            "password",
+            password
+        }
+    };
+
+    return request.dump();
+}
+
+std::string
+ClientProtocol::createClickRequestMessage(
+    const MouseClick& click)
 {
     const std::string button =
         click.button == MouseButton::Left

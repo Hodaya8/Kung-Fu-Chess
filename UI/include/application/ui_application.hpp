@@ -15,7 +15,9 @@ class UiApplication
 public:
     UiApplication(
         const std::string& serverUri,
-        const std::string& assetsDirectory
+        const std::string& assetsDirectory,
+        const std::string& username,
+        const std::string& password
     );
 
     int run();
@@ -30,6 +32,8 @@ public:
 
 private:
     std::string serverUri;
+    std::string username;
+    std::string password;
 
     Renderer renderer;
 
@@ -45,6 +49,8 @@ private:
 
     MouseInput mouseInput;
     WebSocketClient webSocketClient;
+
+    void handleConnected();
 
     void handleServerMessage(
         const std::string& message

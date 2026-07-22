@@ -23,20 +23,30 @@ namespace
 
 UiApplication::UiApplication(
     const std::string& serverUri,
-    const std::string& assetsDirectory)
+    const std::string& assetsDirectory,
+    const std::string& username,
+    const std::string& password)
     : serverUri(serverUri),
+      username(username),
+      password(password),
       renderer(assetsDirectory),
       firstStateRendered(false),
       mouseInput(
-          [this](const MouseClick& click)
+          [this](
+              const MouseClick& click)
           {
               handleMouseClick(click);
           }
       ),
       webSocketClient(
-          [this](const std::string& message)
+          [this](
+              const std::string& message)
           {
               handleServerMessage(message);
+          },
+          [this]()
+          {
+              handleConnected();
           }
       )
 {
@@ -101,6 +111,29 @@ int UiApplication::run()
     }
 }
 
+void UiApplication::handleConnected()
+{
+    const std::string message =
+        ClientProtocol::
+            createLoginRequestMessage(
+                username,
+                password
+            );
+
+    if (webSocketClient.send(
+            message))
+    {
+        std::cout
+            << "[UI] Login request sent for: "
+            << username
+            << std::endl;
+
+        // לאחר השליחה אין צורך להשאיר
+        // את הסיסמה בשדה של האפליקציה.
+        password.clear();
+    }
+}
+
 void UiApplication::handleServerMessage(
     const std::string& message)
 {
@@ -114,6 +147,49 @@ void UiApplication::handleServerMessage(
                 "messageType",
                 std::string{}
             );
+
+        if (messageType == "LoginAccepted")
+        {
+            const std::string acceptedUsername =
+                json.at("username")
+                    .get<std::string>();
+
+            const int rating =
+                json.at("rating")
+                    .get<int>();
+
+            const bool registered =
+                json.at("registered")
+                    .get<bool>();
+
+            std::cout
+                << "[UI] "
+                << (
+                    registered
+                        ? "New user registered: "
+                        : "Logged in as: "
+                )
+                << acceptedUsername
+                << std::endl;
+
+            std::cout
+                << "[UI] Rating: "
+                << rating
+                << std::endl;
+
+            return;
+        }
+
+        if (messageType == "LoginRejected")
+        {
+            std::cerr
+                << "[UI] Login rejected: "
+                << json.at("reason")
+                       .get<std::string>()
+                << std::endl;
+
+            return;
+        }
 
         if (messageType == "PlayerAssigned")
         {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
@@ -7,8 +8,11 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
+#include "application/client_state.hpp"
+#include "auth/auth_service.hpp"
+#include "database/databaseManager.hpp"
 #include "game/game_session.hpp"
-#include "model/piece.hpp"
+#include "repositories/userRepository.hpp"
 
 class KungFuChessServerApplication
 {
@@ -24,14 +28,19 @@ private:
     static constexpr int GAME_TICK_MS = 20;
 
     int port;
+
+    DatabaseManager databaseManager;
+    UserRepository userRepository;
+    AuthService authService;
+
     Server server;
     GameSession game;
 
     std::map<
         ConnectionHandle,
-        Color,
+        ClientState,
         std::owner_less<ConnectionHandle>
-    > players;
+    > clients;
 
     void configureServer();
 
@@ -48,9 +57,25 @@ private:
         Server::message_ptr message
     );
 
+    void handleLoginRequest(
+        ConnectionHandle connection,
+        const std::string& message
+    );
+
+    void handleClickRequest(
+        ConnectionHandle connection,
+        const std::string& message
+    );
+
     bool isSideAssigned(
         Color playerColor
     ) const;
+
+    bool isUsernameConnected(
+        const std::string& username
+    ) const;
+
+    std::size_t loggedInPlayerCount() const;
 
     void broadcastGameState();
 
@@ -64,11 +89,21 @@ private:
         const std::string& message
     );
 
+    void sendLoginRejected(
+        ConnectionHandle connection,
+        const std::string& reason
+    );
+
+    void closeFullConnection(
+        ConnectionHandle connection
+    );
+
     void scheduleGameTick();
 
 public:
-    explicit KungFuChessServerApplication(
-        int port
+    KungFuChessServerApplication(
+        int port,
+        const std::string& databasePath
     );
 
     int run();

@@ -22,6 +22,34 @@ namespace JsonProtocol
         ClickButton button;
     };
 
+    struct LoginRequest
+    {
+        std::string username;
+        std::string password;
+    };
+
+    std::string getMessageType(
+        const std::string& message
+    );
+
+    LoginRequest parseLoginRequest(
+        const std::string& message
+    );
+
+    ClickRequest parseClickRequest(
+        const std::string& message
+    );
+
+    std::string createLoginAcceptedMessage(
+        const std::string& username,
+        int rating,
+        bool registered
+    );
+
+    std::string createLoginRejectedMessage(
+        const std::string& reason
+    );
+
     std::string createGameStateMessage(
         const GameSnapshot& snapshot,
         bool gameOver
@@ -37,8 +65,4 @@ namespace JsonProtocol
     );
 
     std::string createGameFullMessage();
-
-    ClickRequest parseClickRequest(
-        const std::string& message
-    );
 }

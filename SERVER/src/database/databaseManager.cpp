@@ -1,58 +1,77 @@
-#include "include/database/databaseManager.hpp"
-#include "include/repositories/userRepository.hpp"
-#include "sqlite3.h"
+#include "database/databaseManager.hpp"
+
 #include <iostream>
+#include <utility>
 
-DatabaseManager::DatabaseManager(std::string name) : db(nullptr), dbName(std::move(name)) {}
+DatabaseManager::DatabaseManager(
+    std::string databasePath)
+    : database(nullptr),
+      databasePath(
+          std::move(databasePath)
+      )
+{
+}
 
-DatabaseManager::~DatabaseManager() {
-    if (db) {
-        sqlite3_close(db);
-        std::cout << "Database connection closed." << std::endl;
+DatabaseManager::~DatabaseManager()
+{
+    if (database)
+    {
+        sqlite3_close(database);
+        database = nullptr;
+
+        std::cout
+            << "[DATABASE] Connection closed."
+            << std::endl;
     }
 }
 
-bool DatabaseManager::init() {
-    // פתיחה או יצירה של קובץ מסד הנתונים המקומי
-    int rc = sqlite3_open(dbName.c_str(), &db);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Can't open database: " << (db ? sqlite3_errmsg(db) : "Unknown error") << std::endl;
-        if (db) {
-            sqlite3_close(db);
-            db = nullptr;
+bool DatabaseManager::init()
+{
+    if (database)
+    {
+        return true;
+    }
+
+    const int result =
+        sqlite3_open(
+            databasePath.c_str(),
+            &database
+        );
+
+    if (result != SQLITE_OK)
+    {
+        std::cerr
+            << "[DATABASE] Could not open database: "
+            << (
+                database
+                    ? sqlite3_errmsg(database)
+                    : "Unknown error"
+            )
+            << std::endl;
+
+        if (database)
+        {
+            sqlite3_close(database);
+            database = nullptr;
         }
+
         return false;
     }
 
-    std::cout << "Database opened successfully: " << dbName << std::endl;
+    std::cout
+        << "[DATABASE] Opened: "
+        << databasePath
+        << std::endl;
 
-    // הפעלת יצירת טבלת המשתמשים דרך ה-Repository שלה
-    if (!UserRepository::createTable(db)) {
-        std::cerr << "Failed to initialize Users table." << std::endl;
-        return false;
-    }
-
-    std::cout << "All database tables initialized successfully." << std::endl;
     return true;
 }
 
-sqlite3* DatabaseManager::getConnection() const {
-    return db;
+sqlite3* DatabaseManager::getConnection() const
+{
+    return database;
 }
 
-sqlite3* DatabaseManager::openDatabase(const std::string& dbPath) {
-    sqlite3* db;
-    int rc = sqlite3_open(dbPath.c_str(), &db);
-    
-    if (rc != SQLITE_OK) {
-        std::cerr << "Error opening SQLite database: " << sqlite3_errmsg(db) << std::endl;
-        return nullptr;
-    }
-    return db;
-}
-
-void DatabaseManager::closeDatabase(sqlite3* db) {
-    if (db) {
-        sqlite3_close(db);
-    }
+bool DatabaseManager::isOpen() const
+{
+    return database != nullptr;
 }

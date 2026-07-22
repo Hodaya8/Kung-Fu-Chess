@@ -1,13 +1,13 @@
-#ifndef USER_H
-#define USER_H
+#pragma once
 
 #include <string>
 
-struct User {
-    int id;
+struct User
+{
+    static constexpr int INITIAL_RATING = 1200;
+
+    int id = 0;
     std::string username;
     std::string password;
-    int rating;
+    int rating = INITIAL_RATING;
 };
-
-#endif // USER_H

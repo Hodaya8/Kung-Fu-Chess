@@ -14,8 +14,12 @@ public:
     using MessageHandler =
         std::function<void(const std::string&)>;
 
-    explicit WebSocketClient(
-        MessageHandler messageHandler
+    using ConnectedHandler =
+        std::function<void()>;
+
+    WebSocketClient(
+        MessageHandler messageHandler,
+        ConnectedHandler connectedHandler = {}
     );
 
     ~WebSocketClient();
@@ -50,4 +54,5 @@ private:
     std::atomic<bool> connected;
 
     MessageHandler messageHandler;
+    ConnectedHandler connectedHandler;
 };

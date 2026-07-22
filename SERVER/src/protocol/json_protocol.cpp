@@ -47,6 +47,163 @@ namespace
     }
 }
 
+std::string JsonProtocol::getMessageType(
+    const std::string& message)
+{
+    const Json json =
+        Json::parse(message);
+
+    return json.at("messageType")
+               .get<std::string>();
+}
+
+JsonProtocol::LoginRequest
+JsonProtocol::parseLoginRequest(
+    const std::string& message)
+{
+    const Json request =
+        Json::parse(message);
+
+    const std::string messageType =
+        request.at("messageType")
+               .get<std::string>();
+
+    if (messageType != "LoginRequest")
+    {
+        throw std::invalid_argument(
+            "Expected LoginRequest."
+        );
+    }
+
+    const std::string username =
+        request.at("username")
+               .get<std::string>();
+
+    const std::string password =
+        request.at("password")
+               .get<std::string>();
+
+    if (
+        username.empty() ||
+        password.empty()
+    )
+    {
+        throw std::invalid_argument(
+            "Username and password cannot be empty."
+        );
+    }
+
+    return LoginRequest{
+        username,
+        password
+    };
+}
+
+JsonProtocol::ClickRequest
+JsonProtocol::parseClickRequest(
+    const std::string& message)
+{
+    const Json request =
+        Json::parse(message);
+
+    const std::string messageType =
+        request.at("messageType")
+               .get<std::string>();
+
+    if (messageType != "ClickRequest")
+    {
+        throw std::invalid_argument(
+            "Expected ClickRequest."
+        );
+    }
+
+    const int x =
+        request.at("x").get<int>();
+
+    const int y =
+        request.at("y").get<int>();
+
+    if (x < 0 || y < 0)
+    {
+        throw std::invalid_argument(
+            "Click coordinates cannot be negative."
+        );
+    }
+
+    const std::string buttonText =
+        request.at("button")
+               .get<std::string>();
+
+    ClickButton button;
+
+    if (buttonText == "left")
+    {
+        button = ClickButton::Left;
+    }
+    else if (buttonText == "right")
+    {
+        button = ClickButton::Right;
+    }
+    else
+    {
+        throw std::invalid_argument(
+            "Unknown click button."
+        );
+    }
+
+    return ClickRequest{
+        x,
+        y,
+        button
+    };
+}
+
+std::string
+JsonProtocol::createLoginAcceptedMessage(
+    const std::string& username,
+    int rating,
+    bool registered)
+{
+    const Json response = {
+        {
+            "messageType",
+            "LoginAccepted"
+        },
+        {
+            "username",
+            username
+        },
+        {
+            "rating",
+            rating
+        },
+        {
+            "registered",
+            registered
+        }
+    };
+
+    return response.dump();
+}
+
+std::string
+JsonProtocol::createLoginRejectedMessage(
+    const std::string& reason)
+{
+    const Json response = {
+        {
+            "messageType",
+            "LoginRejected"
+        },
+        {
+            "reason",
+            reason
+        }
+    };
+
+    return response.dump();
+}
+
 std::string
 JsonProtocol::createGameStateMessage(
     const GameSnapshot& snapshot,
@@ -58,24 +215,15 @@ JsonProtocol::createGameStateMessage(
          snapshot.getPieces())
     {
         pieces.push_back({
-            {
-                "type",
-                piece.type
-            },
+            {"type", piece.type},
             {
                 "state",
                 pieceStateToString(
                     piece.state
                 )
             },
-            {
-                "row",
-                piece.row
-            },
-            {
-                "col",
-                piece.col
-            },
+            {"row", piece.row},
+            {"col", piece.col},
             {
                 "destinationRow",
                 piece.destinationRow
@@ -188,63 +336,4 @@ JsonProtocol::createGameFullMessage()
     };
 
     return response.dump();
-}
-
-JsonProtocol::ClickRequest
-JsonProtocol::parseClickRequest(
-    const std::string& message)
-{
-    const Json request =
-        Json::parse(message);
-
-    const std::string messageType =
-        request.at("messageType")
-               .get<std::string>();
-
-    if (messageType != "ClickRequest")
-    {
-        throw std::invalid_argument(
-            "Expected ClickRequest."
-        );
-    }
-
-    const int x =
-        request.at("x").get<int>();
-
-    const int y =
-        request.at("y").get<int>();
-
-    if (x < 0 || y < 0)
-    {
-        throw std::invalid_argument(
-            "Click coordinates cannot be negative."
-        );
-    }
-
-    const std::string buttonText =
-        request.at("button")
-               .get<std::string>();
-
-    ClickButton button;
-
-    if (buttonText == "left")
-    {
-        button = ClickButton::Left;
-    }
-    else if (buttonText == "right")
-    {
-        button = ClickButton::Right;
-    }
-    else
-    {
-        throw std::invalid_argument(
-            "Unknown click button."
-        );
-    }
-
-    return ClickRequest{
-        x,
-        y,
-        button
-    };
 }

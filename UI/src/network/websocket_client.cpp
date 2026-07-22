@@ -4,9 +4,15 @@
 #include <utility>
 
 WebSocketClient::WebSocketClient(
-    MessageHandler messageHandler)
+    MessageHandler messageHandler,
+    ConnectedHandler connectedHandler)
     : connected(false),
-      messageHandler(std::move(messageHandler))
+      messageHandler(
+          std::move(messageHandler)
+      ),
+      connectedHandler(
+          std::move(connectedHandler)
+      )
 {
     client.clear_access_channels(
         websocketpp::log::alevel::all
@@ -24,6 +30,11 @@ WebSocketClient::WebSocketClient(
             std::cout
                 << "[UI] Connected to server."
                 << std::endl;
+
+            if (this->connectedHandler)
+            {
+                this->connectedHandler();
+            }
         }
     );
 
@@ -122,7 +133,9 @@ bool WebSocketClient::connect(
     connection =
         connectionPointer->get_handle();
 
-    client.connect(connectionPointer);
+    client.connect(
+        connectionPointer
+    );
 
     networkThread =
         std::thread(
@@ -133,7 +146,8 @@ bool WebSocketClient::connect(
                     client.run();
                 }
                 catch (
-                    const std::exception& exception)
+                    const std::exception&
+                        exception)
                 {
                     std::cerr
                         << "[UI] WebSocket error: "
@@ -204,7 +218,6 @@ void WebSocketClient::disconnect()
 
     connected = false;
 
-    // גורם ללולאת הרשת להסתיים
     client.stop();
 
     if (networkThread.joinable())

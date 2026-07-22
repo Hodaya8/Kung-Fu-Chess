@@ -1,25 +1,33 @@
-#ifndef DATABASE_MANAGER_HPP
-#define DATABASE_MANAGER_HPP
+#pragma once
 
 #include <string>
+
 #include "sqlite3.h"
 
-class DatabaseManager {
+class DatabaseManager
+{
 private:
-    sqlite3* db;
-    std::string dbName;
+    sqlite3* database;
+    std::string databasePath;
 
 public:
-    explicit DatabaseManager(std::string name);
+    explicit DatabaseManager(
+        std::string databasePath
+    );
+
     ~DatabaseManager();
 
-    // פתיחת המסד ואתחול כל הטבלאות במערכת
+    DatabaseManager(
+        const DatabaseManager&
+    ) = delete;
+
+    DatabaseManager& operator=(
+        const DatabaseManager&
+    ) = delete;
+
     bool init();
 
-    // החזרת מצביע החיבור הפעיל לשימוש ה-Repositories
     sqlite3* getConnection() const;
-    static sqlite3* openDatabase(const std::string& dbPath);
-    static void closeDatabase(sqlite3* db);
-};
 
-#endif // DATABASE_MANAGER_HPP
+    bool isOpen() const;
+};
