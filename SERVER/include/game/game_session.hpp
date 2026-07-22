@@ -1,7 +1,8 @@
 #pragma once
 
 #include <optional>
-
+#include <vector>
+#include "model/piece_removed_info.hpp"
 #include "engine/GameEngine.hpp"
 #include "input/BoardMapper.hpp"
 #include "input/Controller.hpp"
@@ -48,9 +49,7 @@ public:
         int y
     );
 
-    void advanceTime(
-        int milliseconds
-    );
+    std::vector<PieceRemovedInfo> advanceTime(int milliseconds);
 
     GameSnapshot getSnapshot() const;
 

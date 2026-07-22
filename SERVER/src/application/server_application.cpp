@@ -9,8 +9,7 @@
 
 namespace
 {
-    std::string authFailureReason(
-        AuthStatus status)
+    std::string authFailureReason(AuthStatus status)
     {
         switch (status)
         {
@@ -32,19 +31,26 @@ namespace
     }
 }
 
-KungFuChessServerApplication::
-    KungFuChessServerApplication(
-        int port,
-        const std::string& databasePath)
+KungFuChessServerApplication::KungFuChessServerApplication(
+    int port,
+    const std::string& databasePath)
     : port(port),
       databaseManager(databasePath),
       userRepository(databaseManager),
       authService(userRepository)
 {
+    // ScoreService נרשם כמאזין לאירועים של יציאת כלי
+    pieceRemovedBus.subscribe(
+        [this](const PieceRemovedInfo& removedPiece)
+        {
+            scoreService.handlePieceRemoved(
+                removedPiece
+            );
+        }
+    );
 }
 
-void KungFuChessServerApplication::
-    configureServer()
+void KungFuChessServerApplication::configureServer()
 {
     server.clear_access_channels(
         websocketpp::log::alevel::all
@@ -110,10 +116,7 @@ int KungFuChessServerApplication::run()
 
         return 0;
     }
-    catch (
-        const websocketpp::exception&
-            exception
-    )
+    catch (const websocketpp::exception& exception)
     {
         std::cerr
             << "[SERVER ERROR] "
@@ -122,9 +125,7 @@ int KungFuChessServerApplication::run()
 
         return 1;
     }
-    catch (
-        const std::exception& exception
-    )
+    catch (const std::exception& exception)
     {
         std::cerr
             << "[SERVER ERROR] "
@@ -219,9 +220,7 @@ void KungFuChessServerApplication::onMessage(
             "Unknown message type."
         );
     }
-    catch (
-        const std::exception& exception
-    )
+    catch (const std::exception& exception)
     {
         std::cerr
             << "[SERVER] Invalid request: "
@@ -230,10 +229,9 @@ void KungFuChessServerApplication::onMessage(
     }
 }
 
-void KungFuChessServerApplication::
-    handleLoginRequest(
-        ConnectionHandle connection,
-        const std::string& message)
+void KungFuChessServerApplication::handleLoginRequest(
+    ConnectionHandle connection,
+    const std::string& message)
 {
     const auto client =
         clients.find(connection);
@@ -325,20 +323,18 @@ void KungFuChessServerApplication::
 
     sendTextMessage(
         connection,
-        JsonProtocol::
-            createLoginAcceptedMessage(
-                clientState.username,
-                clientState.rating,
-                registered
-            )
+        JsonProtocol::createLoginAcceptedMessage(
+            clientState.username,
+            clientState.rating,
+            registered
+        )
     );
 
     sendTextMessage(
         connection,
-        JsonProtocol::
-            createPlayerAssignedMessage(
-                playerColor
-            )
+        JsonProtocol::createPlayerAssignedMessage(
+            playerColor
+        )
     );
 
     std::cout
@@ -368,10 +364,9 @@ void KungFuChessServerApplication::
     );
 }
 
-void KungFuChessServerApplication::
-    handleClickRequest(
-        ConnectionHandle connection,
-        const std::string& message)
+void KungFuChessServerApplication::handleClickRequest(
+    ConnectionHandle connection,
+    const std::string& message)
 {
     const auto client =
         clients.find(connection);
@@ -384,10 +379,8 @@ void KungFuChessServerApplication::
     const ClientState& clientState =
         client->second;
 
-    if (
-        !clientState.loggedIn ||
-        !clientState.playerColor.has_value()
-    )
+    if (!clientState.loggedIn ||
+        !clientState.playerColor.has_value())
     {
         return;
     }
@@ -400,10 +393,8 @@ void KungFuChessServerApplication::
     const Color playerColor =
         clientState.playerColor.value();
 
-    if (
-        request.button ==
-        JsonProtocol::ClickButton::Left
-    )
+    if (request.button ==
+        JsonProtocol::ClickButton::Left)
     {
         game.handleLeftClick(
             playerColor,
@@ -428,21 +419,18 @@ void KungFuChessServerApplication::
     broadcastGameState();
 }
 
-bool KungFuChessServerApplication::
-    isSideAssigned(
-        Color playerColor) const
+bool KungFuChessServerApplication::isSideAssigned(
+    Color playerColor) const
 {
     for (const auto& client : clients)
     {
         const ClientState& state =
             client.second;
 
-        if (
-            state.loggedIn &&
+        if (state.loggedIn &&
             state.playerColor.has_value() &&
             state.playerColor.value() ==
-                playerColor
-        )
+                playerColor)
         {
             return true;
         }
@@ -451,17 +439,14 @@ bool KungFuChessServerApplication::
     return false;
 }
 
-bool KungFuChessServerApplication::
-    isUsernameConnected(
-        const std::string& username) const
+bool KungFuChessServerApplication::isUsernameConnected(
+    const std::string& username) const
 {
     for (const auto& client : clients)
     {
-        if (
-            client.second.loggedIn &&
+        if (client.second.loggedIn &&
             client.second.username ==
-                username
-        )
+                username)
         {
             return true;
         }
@@ -471,8 +456,7 @@ bool KungFuChessServerApplication::
 }
 
 std::size_t
-KungFuChessServerApplication::
-    loggedInPlayerCount() const
+KungFuChessServerApplication::loggedInPlayerCount() const
 {
     std::size_t count = 0;
 
@@ -487,8 +471,7 @@ KungFuChessServerApplication::
     return count;
 }
 
-void KungFuChessServerApplication::
-    broadcastGameState()
+void KungFuChessServerApplication::broadcastGameState()
 {
     if (loggedInPlayerCount() == 0)
     {
@@ -518,26 +501,23 @@ void KungFuChessServerApplication::
     }
 }
 
-void KungFuChessServerApplication::
-    sendSelectionState(
-        ConnectionHandle connection,
-        Color playerColor)
+void KungFuChessServerApplication::sendSelectionState(
+    ConnectionHandle connection,
+    Color playerColor)
 {
     sendTextMessage(
         connection,
-        JsonProtocol::
-            createSelectionStateMessage(
-                game.getSelectedPosition(
-                    playerColor
-                )
+        JsonProtocol::createSelectionStateMessage(
+            game.getSelectedPosition(
+                playerColor
             )
+        )
     );
 }
 
-void KungFuChessServerApplication::
-    sendTextMessage(
-        ConnectionHandle connection,
-        const std::string& message)
+void KungFuChessServerApplication::sendTextMessage(
+    ConnectionHandle connection,
+    const std::string& message)
 {
     websocketpp::lib::error_code error;
 
@@ -557,23 +537,20 @@ void KungFuChessServerApplication::
     }
 }
 
-void KungFuChessServerApplication::
-    sendLoginRejected(
-        ConnectionHandle connection,
-        const std::string& reason)
+void KungFuChessServerApplication::sendLoginRejected(
+    ConnectionHandle connection,
+    const std::string& reason)
 {
     sendTextMessage(
         connection,
-        JsonProtocol::
-            createLoginRejectedMessage(
-                reason
-            )
+        JsonProtocol::createLoginRejectedMessage(
+            reason
+        )
     );
 }
 
-void KungFuChessServerApplication::
-    closeFullConnection(
-        ConnectionHandle connection)
+void KungFuChessServerApplication::closeFullConnection(
+    ConnectionHandle connection)
 {
     sendTextMessage(
         connection,
@@ -599,23 +576,43 @@ void KungFuChessServerApplication::
     }
 }
 
-void KungFuChessServerApplication::
-    scheduleGameTick()
+void KungFuChessServerApplication::scheduleGameTick()
 {
     server.set_timer(
         GAME_TICK_MS,
         [this](
-            const websocketpp::lib::error_code&
-                error)
+            const websocketpp::lib::error_code& error)
         {
             if (error)
             {
                 return;
             }
 
-            game.advanceTime(
-                GAME_TICK_MS
-            );
+            // קידום המשחק וקבלת כל הכלים שיצאו במחזור הנוכחי
+            auto removedPieces =
+                game.advanceTime(
+                    GAME_TICK_MS
+                );
+
+            // פרסום כל אירוע למנויים של ה־Bus
+            for (const auto& removedPiece :
+                 removedPieces)
+            {
+                pieceRemovedBus.publish(
+                    removedPiece
+                );
+            }
+
+            // הדפסה רק כאשר הניקוד עשוי להשתנות
+            if (!removedPieces.empty())
+            {
+                std::cout
+                    << "[SCORE] White: "
+                    << scoreService.getWhiteScore()
+                    << " | Black: "
+                    << scoreService.getBlackScore()
+                    << std::endl;
+            }
 
             broadcastGameState();
 

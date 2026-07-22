@@ -89,10 +89,13 @@ void GameSession::handleRightClick(
     );
 }
 
-void GameSession::advanceTime(
+std::vector<PieceRemovedInfo>
+GameSession::advanceTime(
     int milliseconds)
 {
-    engine.wait(milliseconds);
+    return engine.wait(
+        milliseconds
+    );
 }
 
 GameSnapshot GameSession::getSnapshot() const

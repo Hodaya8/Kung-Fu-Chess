@@ -18,24 +18,17 @@ GameEngine::GameEngine(Board& board)
 }
 
 // קידום הזמן ובדיקת סיום המשחק
-void GameEngine::wait(int milliseconds)
-{
-    const auto removedPieces =
-        arbiter.advance_time(
-            milliseconds,
-            board
-        );
+std::vector<PieceRemovedInfo> GameEngine::wait(int milliseconds) {
+    auto removedPieces = arbiter.advance_time(milliseconds, board);
 
-    for (const auto& removedPiece :
-         removedPieces)
-    {
-        if (ruleEngine.isGameOver(
-                removedPiece.removedType))
-        {
+    for (const auto& removedPiece : removedPieces) {
+        if (ruleEngine.isGameOver(removedPiece.removedType)) {
             game_over = true;
             break;
         }
     }
+
+    return removedPieces;
 }
 
 // בקשת תנועה
