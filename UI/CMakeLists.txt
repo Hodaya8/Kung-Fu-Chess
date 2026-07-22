@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
+
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 project(KungFuChess)
@@ -8,7 +9,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# בנייה עצמאית של UI
+# =========================================================
+# LogicLib
+# =========================================================
+
+# מאפשר לבנות את ה-UI גם מתוך הפרויקט הראשי
+# וגם ישירות מתוך תיקיית UI.
 if(NOT TARGET LogicLib)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../LOGIC"
@@ -16,38 +22,57 @@ if(NOT TARGET LogicLib)
     )
 endif()
 
+# =========================================================
 # JSON
+# =========================================================
+
 FetchContent_Declare(
     json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.2
+    GIT_REPOSITORY
+        https://github.com/nlohmann/json.git
+    GIT_TAG
+        v3.11.2
 )
 
 FetchContent_MakeAvailable(json)
 
+# =========================================================
 # Asio
+# =========================================================
+
 FetchContent_Declare(
     asio
-    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
-    GIT_TAG asio-1-28-0
+    GIT_REPOSITORY
+        https://github.com/chriskohlhoff/asio.git
+    GIT_TAG
+        asio-1-28-0
 )
 
 FetchContent_MakeAvailable(asio)
 
+# =========================================================
 # WebSocket++
+# =========================================================
+
 FetchContent_Declare(
     websocketpp
-    GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
-    GIT_TAG 0.8.2
+    GIT_REPOSITORY
+        https://github.com/zaphoyd/websocketpp.git
+    GIT_TAG
+        0.8.2
 )
 
 FetchContent_MakeAvailable(websocketpp)
 
+# =========================================================
 # קובצי UI
+# =========================================================
+
 file(
     GLOB_RECURSE
     UI_SOURCES
     CONFIGURE_DEPENDS
+
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
@@ -55,18 +80,31 @@ file(
     GLOB_RECURSE
     UI_HEADERS
     CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
 )
+
+# =========================================================
+# קובץ ההפעלה
+# =========================================================
 
 add_executable(
     ${PROJECT_NAME}
+
     ${UI_SOURCES}
     ${UI_HEADERS}
 )
 
-find_package(Threads REQUIRED)
+find_package(
+    Threads
+    REQUIRED
+)
 
+# =========================================================
 # OpenCV
+# =========================================================
+
 set(
     OPENCV_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../lib"
@@ -82,24 +120,43 @@ set(
     "${OPENCV_DIR}/bin"
 )
 
+# =========================================================
+# תיקיות include
+# =========================================================
+
 target_include_directories(
     ${PROJECT_NAME}
     PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+
+    # מאפשר includes כגון:
+    # include "network/websocket_client.hpp"
+    # include "render/renderer.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+
     "${OPENCV_INCLUDE_DIR}"
     "${asio_SOURCE_DIR}/asio/include"
     "${websocketpp_SOURCE_DIR}"
 )
 
+# =========================================================
+# תיקיית ספריות OpenCV
+# =========================================================
+
 target_link_directories(
     ${PROJECT_NAME}
     PRIVATE
+
     "${OPENCV_LIB_DIR}"
 )
+
+# =========================================================
+# ספריות
+# =========================================================
 
 target_link_libraries(
     ${PROJECT_NAME}
     PRIVATE
+
     LogicLib
     nlohmann_json::nlohmann_json
     Threads::Threads
@@ -110,19 +167,31 @@ target_link_libraries(
     $<$<CONFIG:MinSizeRel>:${OPENCV_LIB_DIR}/opencv_world451.lib>
 )
 
+# =========================================================
+# הגדרות קומפילציה
+# =========================================================
+
 target_compile_definitions(
     ${PROJECT_NAME}
     PRIVATE
+
     ASIO_STANDALONE
     _WEBSOCKETPP_CPP11_STL_
 )
+
+# =========================================================
+# העתקת DLL של OpenCV
+# =========================================================
 
 if(WIN32)
     add_custom_command(
         TARGET ${PROJECT_NAME}
         POST_BUILD
 
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        COMMAND
+            ${CMAKE_COMMAND}
+            -E
+            copy_if_different
 
         $<$<CONFIG:Debug>:${OPENCV_LIB_DIR}/opencv_world451d.dll>
         $<$<CONFIG:Release>:${OPENCV_LIB_DIR}/opencv_world451.dll>
