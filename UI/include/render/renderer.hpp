@@ -19,8 +19,9 @@ public:
     void render(
         const RenderModel& renderModel,
         bool gameOver,
-        const std::optional<Position>&
-            selectedPosition
+        int whiteScore,
+        int blackScore,
+        const std::optional<Position>& selectedPosition
     );
 
 private:

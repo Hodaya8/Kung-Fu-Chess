@@ -54,7 +54,7 @@ std::optional<ServerGameState>
 parseServerGameState(
     const std::string& message)
 {
-    // שלב 1: המרת המחרוזת לאובייקט JSON
+    // המרת המחרוזת לאובייקט JSON
     const Json json =
         Json::parse(message);
 
@@ -64,7 +64,6 @@ parseServerGameState(
             std::string{}
         );
 
-    // בעתיד ייתכן שיהיו סוגי הודעות נוספים
     if (messageType != "GameState")
     {
         return std::nullopt;
@@ -82,7 +81,7 @@ parseServerGameState(
 
     std::vector<PieceSnapshot> pieces;
 
-    // שלב 2: המרת כל כלי מה-JSON ל-PieceSnapshot
+    // המרת כל כלי מה-JSON ל-PieceSnapshot
     for (const auto& pieceJson :
          piecesJson)
     {
@@ -141,12 +140,22 @@ parseServerGameState(
         json.at("gameOver")
             .get<bool>();
 
-    // שלב 3: יצירת GameSnapshot חדש בצד ה-UI
+    const int whiteScore =
+        json.at("whiteScore")
+            .get<int>();
+
+    const int blackScore =
+        json.at("blackScore")
+            .get<int>();
+
+    // יצירת מצב המשחק החדש בצד ה-UI
     return ServerGameState{
         GameSnapshot(
             pieces,
             currentTime
         ),
-        gameOver
+        gameOver,
+        whiteScore,
+        blackScore
     };
 }

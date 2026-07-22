@@ -32,15 +32,13 @@ UiApplication::UiApplication(
       renderer(assetsDirectory),
       firstStateRendered(false),
       mouseInput(
-          [this](
-              const MouseClick& click)
+          [this](const MouseClick& click)
           {
               handleMouseClick(click);
           }
       ),
       webSocketClient(
-          [this](
-              const std::string& message)
+          [this](const std::string& message)
           {
               handleServerMessage(message);
           },
@@ -96,9 +94,7 @@ int UiApplication::run()
 
         return 0;
     }
-    catch (
-        const std::exception& exception
-    )
+    catch (const std::exception& exception)
     {
         cv::destroyAllWindows();
 
@@ -114,22 +110,20 @@ int UiApplication::run()
 void UiApplication::handleConnected()
 {
     const std::string message =
-        ClientProtocol::
-            createLoginRequestMessage(
-                username,
-                password
-            );
+        ClientProtocol::createLoginRequestMessage(
+            username,
+            password
+        );
 
-    if (webSocketClient.send(
-            message))
+    if (webSocketClient.send(message))
     {
         std::cout
             << "[UI] Login request sent for: "
             << username
             << std::endl;
 
-        // לאחר השליחה אין צורך להשאיר
-        // את הסיסמה בשדה של האפליקציה.
+        // לאחר השליחה אין צורך לשמור
+        // את הסיסמה בשדה של האפליקציה
         password.clear();
     }
 }
@@ -202,10 +196,7 @@ void UiApplication::handleServerMessage(
             return;
         }
 
-        if (
-            messageType ==
-            "ConnectionRejected"
-        )
+        if (messageType == "ConnectionRejected")
         {
             std::cerr
                 << "[UI] Connection rejected: "
@@ -237,15 +228,11 @@ void UiApplication::handleServerMessage(
             return;
         }
 
-        if (
-            messageType ==
-            "SelectionState"
-        )
+        if (messageType == "SelectionState")
         {
             const bool hasSelection =
-                json.at(
-                    "hasSelection"
-                ).get<bool>();
+                json.at("hasSelection")
+                    .get<bool>();
 
             std::lock_guard<std::mutex>
                 lock(serverStateMutex);
@@ -265,9 +252,7 @@ void UiApplication::handleServerMessage(
             }
         }
     }
-    catch (
-        const std::exception& exception
-    )
+    catch (const std::exception& exception)
     {
         std::cerr
             << "[UI] Invalid server message: "
@@ -280,13 +265,11 @@ void UiApplication::handleMouseClick(
     const MouseClick& click)
 {
     const std::string message =
-        ClientProtocol::
-            createClickRequestMessage(
-                click
-            );
+        ClientProtocol::createClickRequestMessage(
+            click
+        );
 
-    if (webSocketClient.send(
-            message))
+    if (webSocketClient.send(message))
     {
         std::cout
             << "[UI] Click sent: ("
@@ -344,6 +327,8 @@ void UiApplication::renderLatestState()
     renderer.render(
         renderModel,
         stateForRendering->gameOver,
+        stateForRendering->whiteScore,
+        stateForRendering->blackScore,
         selectionForRendering
     );
 }

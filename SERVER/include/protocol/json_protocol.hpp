@@ -52,12 +52,13 @@ namespace JsonProtocol
 
     std::string createGameStateMessage(
         const GameSnapshot& snapshot,
-        bool gameOver
+        bool gameOver,
+        int whiteScore,
+        int blackScore
     );
 
     std::string createSelectionStateMessage(
-        const std::optional<Position>&
-            selectedPosition
+        const std::optional<Position>& selectedPosition
     );
 
     std::string createPlayerAssignedMessage(

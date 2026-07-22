@@ -7,6 +7,52 @@ namespace
     constexpr int BOARD_SIZE = 8;
     constexpr int TOTAL_FRAMES = 5;
     constexpr int SELECTION_BORDER_SIZE = 4;
+
+    constexpr int SCORE_MARGIN = 10;
+    constexpr int SCORE_TEXT_Y = 35;
+    constexpr double SCORE_FONT_SCALE = 0.8;
+    constexpr int SCORE_TEXT_THICKNESS = 2;
+    constexpr int SCORE_OUTLINE_THICKNESS = 4;
+
+    const cv::Scalar SCORE_TEXT_COLOR(
+        0,
+        255,
+        255
+    );
+
+    const cv::Scalar SCORE_OUTLINE_COLOR(
+        0,
+        0,
+        0
+    );
+
+    void drawScoreText(
+        cv::Mat frame,
+        const std::string& text,
+        const cv::Point& position)
+    {
+        // ציור מסגרת שחורה מסביב לטקסט
+        cv::putText(
+            frame,
+            text,
+            position,
+            cv::FONT_HERSHEY_SIMPLEX,
+            SCORE_FONT_SCALE,
+            SCORE_OUTLINE_COLOR,
+            SCORE_OUTLINE_THICKNESS
+        );
+
+        // ציור הטקסט עצמו
+        cv::putText(
+            frame,
+            text,
+            position,
+            cv::FONT_HERSHEY_SIMPLEX,
+            SCORE_FONT_SCALE,
+            SCORE_TEXT_COLOR,
+            SCORE_TEXT_THICKNESS
+        );
+    }
 }
 
 Renderer::Renderer(
@@ -47,8 +93,9 @@ Renderer::Renderer(
 void Renderer::render(
     const RenderModel& renderModel,
     bool gameOver,
-    const std::optional<Position>&
-        selectedPosition)
+    int whiteScore,
+    int blackScore,
+    const std::optional<Position>& selectedPosition)
 {
     try
     {
@@ -82,13 +129,16 @@ void Renderer::render(
             }
         };
 
+        const int boardPixelSize =
+            BOARD_SIZE * cellSize;
+
         Img frame;
 
         frame.read(
             boardPath,
             std::make_pair(
-                BOARD_SIZE * cellSize,
-                BOARD_SIZE * cellSize
+                boardPixelSize,
+                boardPixelSize
             ),
             false
         );
@@ -97,7 +147,9 @@ void Renderer::render(
              renderModel.getPieces())
         {
             const auto pathIterator =
-                piecePaths.find(piece.type);
+                piecePaths.find(
+                    piece.type
+                );
 
             if (pathIterator ==
                 piecePaths.end())
@@ -214,10 +266,8 @@ void Renderer::render(
                 piece.state ==
                     PieceState::long_rest;
 
-            if (
-                isResting &&
-                piece.timeRemaining >= 0
-            )
+            if (isResting &&
+                piece.timeRemaining >= 0)
             {
                 const std::string timeText =
                     std::to_string(
@@ -246,9 +296,6 @@ void Renderer::render(
 
         if (gameOver)
         {
-            const int boardPixelSize =
-                BOARD_SIZE * cellSize;
-
             cv::rectangle(
                 frame.get_mat(),
                 cv::Point(0, 0),
@@ -271,14 +318,55 @@ void Renderer::render(
             );
         }
 
+        const std::string whiteScoreText =
+            "White: " +
+            std::to_string(
+                whiteScore
+            );
+
+        const std::string blackScoreText =
+            "Black: " +
+            std::to_string(
+                blackScore
+            );
+
+        int textBaseline = 0;
+
+        const cv::Size blackTextSize =
+            cv::getTextSize(
+                blackScoreText,
+                cv::FONT_HERSHEY_SIMPLEX,
+                SCORE_FONT_SCALE,
+                SCORE_TEXT_THICKNESS,
+                &textBaseline
+            );
+
+        drawScoreText(
+            frame.get_mat(),
+            whiteScoreText,
+            cv::Point(
+                SCORE_MARGIN,
+                SCORE_TEXT_Y
+            )
+        );
+
+        drawScoreText(
+            frame.get_mat(),
+            blackScoreText,
+            cv::Point(
+                boardPixelSize -
+                    blackTextSize.width -
+                    SCORE_MARGIN,
+                SCORE_TEXT_Y
+            )
+        );
+
         cv::imshow(
             "Image",
             frame.get_mat()
         );
     }
-    catch (
-        const std::exception& exception
-    )
+    catch (const std::exception& exception)
     {
         std::cerr
             << "[UI] Render error: "

@@ -9,8 +9,7 @@ using Json = nlohmann::json;
 
 namespace
 {
-    std::string pieceStateToString(
-        PieceState state)
+    std::string pieceStateToString(PieceState state)
     {
         switch (state)
         {
@@ -38,8 +37,7 @@ namespace
         );
     }
 
-    std::string colorToString(
-        Color color)
+    std::string colorToString(Color color)
     {
         return color == Color::WHITE
             ? "white"
@@ -83,10 +81,8 @@ JsonProtocol::parseLoginRequest(
         request.at("password")
                .get<std::string>();
 
-    if (
-        username.empty() ||
-        password.empty()
-    )
+    if (username.empty() ||
+        password.empty())
     {
         throw std::invalid_argument(
             "Username and password cannot be empty."
@@ -158,8 +154,7 @@ JsonProtocol::parseClickRequest(
     };
 }
 
-std::string
-JsonProtocol::createLoginAcceptedMessage(
+std::string JsonProtocol::createLoginAcceptedMessage(
     const std::string& username,
     int rating,
     bool registered)
@@ -186,8 +181,7 @@ JsonProtocol::createLoginAcceptedMessage(
     return response.dump();
 }
 
-std::string
-JsonProtocol::createLoginRejectedMessage(
+std::string JsonProtocol::createLoginRejectedMessage(
     const std::string& reason)
 {
     const Json response = {
@@ -204,26 +198,35 @@ JsonProtocol::createLoginRejectedMessage(
     return response.dump();
 }
 
-std::string
-JsonProtocol::createGameStateMessage(
+std::string JsonProtocol::createGameStateMessage(
     const GameSnapshot& snapshot,
-    bool gameOver)
+    bool gameOver,
+    int whiteScore,
+    int blackScore)
 {
     Json pieces = Json::array();
 
-    for (const auto& piece :
-         snapshot.getPieces())
+    for (const auto& piece : snapshot.getPieces())
     {
         pieces.push_back({
-            {"type", piece.type},
+            {
+                "type",
+                piece.type
+            },
             {
                 "state",
                 pieceStateToString(
                     piece.state
                 )
             },
-            {"row", piece.row},
-            {"col", piece.col},
+            {
+                "row",
+                piece.row
+            },
+            {
+                "col",
+                piece.col
+            },
             {
                 "destinationRow",
                 piece.destinationRow
@@ -265,6 +268,14 @@ JsonProtocol::createGameStateMessage(
             gameOver
         },
         {
+            "whiteScore",
+            whiteScore
+        },
+        {
+            "blackScore",
+            blackScore
+        },
+        {
             "pieces",
             pieces
         }
@@ -273,10 +284,8 @@ JsonProtocol::createGameStateMessage(
     return response.dump();
 }
 
-std::string
-JsonProtocol::createSelectionStateMessage(
-    const std::optional<Position>&
-        selectedPosition)
+std::string JsonProtocol::createSelectionStateMessage(
+    const std::optional<Position>& selectedPosition)
 {
     Json response = {
         {
@@ -301,8 +310,7 @@ JsonProtocol::createSelectionStateMessage(
     return response.dump();
 }
 
-std::string
-JsonProtocol::createPlayerAssignedMessage(
+std::string JsonProtocol::createPlayerAssignedMessage(
     Color playerColor)
 {
     const Json response = {
@@ -321,8 +329,7 @@ JsonProtocol::createPlayerAssignedMessage(
     return response.dump();
 }
 
-std::string
-JsonProtocol::createGameFullMessage()
+std::string JsonProtocol::createGameFullMessage()
 {
     const Json response = {
         {

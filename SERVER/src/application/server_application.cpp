@@ -39,7 +39,6 @@ KungFuChessServerApplication::KungFuChessServerApplication(
       userRepository(databaseManager),
       authService(userRepository)
 {
-    // ScoreService נרשם כמאזין לאירועים של יציאת כלי
     pieceRemovedBus.subscribe(
         [this](const PieceRemovedInfo& removedPiece)
         {
@@ -314,8 +313,7 @@ void KungFuChessServerApplication::handleLoginRequest(
     clientState.playerColor =
         playerColor;
 
-    clientState.loggedIn =
-        true;
+    clientState.loggedIn = true;
 
     const bool registered =
         authResult.status ==
@@ -484,7 +482,9 @@ void KungFuChessServerApplication::broadcastGameState()
     const std::string message =
         JsonProtocol::createGameStateMessage(
             snapshot,
-            game.isGameOver()
+            game.isGameOver(),
+            scoreService.getWhiteScore(),
+            scoreService.getBlackScore()
         );
 
     for (const auto& client : clients)
@@ -588,13 +588,11 @@ void KungFuChessServerApplication::scheduleGameTick()
                 return;
             }
 
-            // קידום המשחק וקבלת כל הכלים שיצאו במחזור הנוכחי
             auto removedPieces =
                 game.advanceTime(
                     GAME_TICK_MS
                 );
 
-            // פרסום כל אירוע למנויים של ה־Bus
             for (const auto& removedPiece :
                  removedPieces)
             {
@@ -603,7 +601,6 @@ void KungFuChessServerApplication::scheduleGameTick()
                 );
             }
 
-            // הדפסה רק כאשר הניקוד עשוי להשתנות
             if (!removedPieces.empty())
             {
                 std::cout
