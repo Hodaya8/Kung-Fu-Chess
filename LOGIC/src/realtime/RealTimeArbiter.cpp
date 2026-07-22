@@ -6,7 +6,16 @@ void RealTimeArbiter::addMotion(const Motion& motion) { activeMotions.push_back(
 
 bool RealTimeArbiter::has_active_motion() const { return !activeMotions.empty(); }
 
-void RealTimeArbiter::addJump(Position cell, int duration) { activeJumps.push_back({cell, currentTime + duration}); }
+void RealTimeArbiter::addJump(
+    Position cell,
+    int duration)
+{
+    activeJumps.push_back({
+        cell,
+        currentTime,
+        currentTime + duration
+    });
+}
 
 bool RealTimeArbiter::isPieceJumping(Position cell) const {
     for (const auto& j : activeJumps) { 

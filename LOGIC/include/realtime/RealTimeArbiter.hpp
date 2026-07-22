@@ -1,31 +1,90 @@
-#pragma once
-#include "Motion.hpp"
-#include "model/board.hpp"
-#include <vector>
-#include <string>
+// #pragma once
+// #include "Motion.hpp"
+// #include "model/board.hpp"
+// #include <vector>
+// #include <string>
 
-struct ActiveJump {
+// struct ActiveJump {
+//     Position cell;
+//     int arrivalTime;
+// };
+
+// class RealTimeArbiter {
+// private:
+//     std::vector<Motion> activeMotions; // יכיל לכל היותר תנועה אחת
+//     std::vector<ActiveJump> activeJumps; // מעקב אחר קפיצות פעילות באוויר
+//     int currentTime = 0;
+//     // פונקציה המחזירה את הכלי המעודכן- מוכתר או שלא
+//     std::shared_ptr<Piece> handlePromotion(Board& board, Position dest, std::shared_ptr<Piece> piece);
+
+// public:
+//     void addMotion(const Motion& motion);
+//     bool has_active_motion() const; // המתודה החדשה שלנו
+//     // מתודות לניהול קפיצה
+//     void addJump(Position cell, int duration = 1000);
+//     bool isPieceJumping(Position cell) const;
+//     bool isPieceMoving(Position cell) const;
+//     std::shared_ptr<Piece> advance_time(int ms, Board& board);
+//     int getCurrentTime() const { return currentTime; };
+//     const std::vector<Motion>& getActiveMotions() const { return activeMotions; }
+//     const std::vector<ActiveJump>& getActiveJumps() const { return activeJumps; }
+// };
+
+
+#pragma once
+
+#include <memory>
+#include <vector>
+
+#include "realtime/Motion.hpp"
+#include "model/board.hpp"
+
+struct ActiveJump
+{
     Position cell;
+    int startTime;
     int arrivalTime;
 };
 
-class RealTimeArbiter {
+class RealTimeArbiter
+{
 private:
-    std::vector<Motion> activeMotions; // יכיל לכל היותר תנועה אחת
-    std::vector<ActiveJump> activeJumps; // מעקב אחר קפיצות פעילות באוויר
+    std::vector<Motion> activeMotions;
+    std::vector<ActiveJump> activeJumps;
+
     int currentTime = 0;
-    // פונקציה המחזירה את הכלי המעודכן- מוכתר או שלא
-    std::shared_ptr<Piece> handlePromotion(Board& board, Position dest, std::shared_ptr<Piece> piece);
+
+    std::shared_ptr<Piece> handlePromotion(
+        Board& board,
+        Position destination,
+        std::shared_ptr<Piece> piece
+    );
 
 public:
     void addMotion(const Motion& motion);
-    bool has_active_motion() const; // המתודה החדשה שלנו
-    // מתודות לניהול קפיצה
+    bool has_active_motion() const;
+
     void addJump(Position cell, int duration = 1000);
     bool isPieceJumping(Position cell) const;
     bool isPieceMoving(Position cell) const;
-    std::shared_ptr<Piece> advance_time(int ms, Board& board);
-    int getCurrentTime() const { return currentTime; };
-    const std::vector<Motion>& getActiveMotions() const { return activeMotions; }
-    const std::vector<ActiveJump>& getActiveJumps() const { return activeJumps; }
+
+    std::shared_ptr<Piece> advance_time(
+        int milliseconds,
+        Board& board
+    );
+
+    int getCurrentTime() const
+    {
+        return currentTime;
+    }
+
+    const std::vector<Motion>& getActiveMotions() const
+    {
+        return activeMotions;
+    }
+
+    const std::vector<ActiveJump>& getActiveJumps() const
+    {
+        return activeJumps;
+    }
 };

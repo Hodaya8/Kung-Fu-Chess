@@ -2,20 +2,35 @@
 *.exe
 chess.exe
 
-# תיקיות בנייה (Build) וקבצים מקומפלים של CMake
-UI/build/
+# תיקיות בנייה וקבצים מקומפלים
 build/
+UI/build/
 *.o
 *.out
+*.pdb
 
-# דוחות כיסוי קוד שנוצרים אוטומטית
+# קובצי CMake שנוצרים אוטומטית
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# דוחות כיסוי קוד
 LOGIC/coverage_report/
 
-# בינאריים של ספריות (אם הם מקומפלים מקומית)
+# ספריות מקומיות
 lib/bin/
-
-# הגדרות מקומיות של עורך הקוד (VS Code)
-.vscode/
-
-
 lib/include/
+
+# הגדרות עורכים
+.vscode/
+.vs/
+
+# מסדי נתונים מקומיים
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# קובצי בדיקה זמניים
+/test_client.py
+/ws_test.html

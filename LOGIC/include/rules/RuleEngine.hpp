@@ -1,5 +1,6 @@
 #pragma once
 
+#include "model/piece.hpp"
 #include "model/Position.hpp"
 #include "rules/PieceRule.hpp"
 
@@ -32,6 +33,9 @@ public:
     Position to
     ) const;
 
-    
+    bool isGameOver(
+        const std::shared_ptr<Piece>& capturedPiece
+    ) const;
+
 
 };

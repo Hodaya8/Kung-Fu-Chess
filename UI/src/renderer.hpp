@@ -1,21 +1,36 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
-#include <string>
 #include <map>
-#include "img.hpp" // או איפה שהמחלקה Img מוגדרת
-#include "game_snapshot.hpp"
-#include "engine/GameEngine.hpp" 
-#include "input/Controller.hpp"
+#include <optional>
+#include <string>
 
-class Renderer {
+#include "img.hpp"
+#include "render_model.hpp"
+#include "model/position.hpp"
+
+class Renderer
+{
 public:
-    Renderer(const std::string& assetsDir);
-    void render(const GameSnapshot& snapshot, const GameEngine& gameEngine, const Controller& controller);
+    explicit Renderer(
+        const std::string& assetsDir
+    );
+
+    void render(
+        const RenderModel& renderModel,
+        bool gameOver,
+        const std::optional<Position>&
+            selectedPosition
+    );
 
 private:
     std::string boardPath;
-    std::map<std::string, std::string> piecePaths;
+
+    std::map<
+        std::string,
+        std::string
+    > piecePaths;
+
     int cellSize;
 };
 

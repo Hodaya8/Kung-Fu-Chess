@@ -59,3 +59,15 @@ int RuleEngine::getTravelTime(std::shared_ptr<Piece> piece, Position from, Posit
     return 0;
 }
 
+bool RuleEngine::isGameOver(
+    const std::shared_ptr<Piece>& capturedPiece) const
+{
+
+    if (!capturedPiece)
+    {
+        return false;
+    }
+
+    return capturedPiece->getType() ==
+           PieceType::KING;
+}
