@@ -22,7 +22,9 @@ Board GameSession::createInitialBoard()
         initialBoard
     );
 
-    return BoardParser::parse(stream);
+    return BoardParser::parse(
+        stream
+    );
 }
 
 GameSession::GameSession()
@@ -108,12 +110,20 @@ bool GameSession::isGameOver() const
     return engine.isGameOver();
 }
 
+std::optional<Color>
+GameSession::getWinnerColor() const
+{
+    return engine.getWinnerColor();
+}
+
 std::optional<Position>
 GameSession::getSelectedPosition(
     Color playerColor) const
 {
     const Controller& controller =
-        controllerFor(playerColor);
+        controllerFor(
+            playerColor
+        );
 
     if (!controller.isSelected())
     {

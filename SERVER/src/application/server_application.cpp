@@ -9,7 +9,8 @@
 
 namespace
 {
-    std::string authFailureReason(AuthStatus status)
+    std::string authFailureReason(
+        AuthStatus status)
     {
         switch (status)
         {
@@ -39,11 +40,22 @@ KungFuChessServerApplication::KungFuChessServerApplication(
       userRepository(databaseManager),
       authService(userRepository)
 {
+    // עדכון ניקוד המשחק
     pieceRemovedBus.subscribe(
         [this](const PieceRemovedInfo& removedPiece)
         {
             scoreService.handlePieceRemoved(
                 removedPiece
+            );
+        }
+    );
+
+    // טיפול בדירוגים בסיום המשחק
+    gameEndedBus.subscribe(
+        [this](const Color& winnerColor)
+        {
+            handleGameEnded(
+                winnerColor
             );
         }
     );
@@ -61,14 +73,18 @@ void KungFuChessServerApplication::configureServer()
     server.set_open_handler(
         [this](ConnectionHandle connection)
         {
-            onOpen(connection);
+            onOpen(
+                connection
+            );
         }
     );
 
     server.set_close_handler(
         [this](ConnectionHandle connection)
         {
-            onClose(connection);
+            onClose(
+                connection
+            );
         }
     );
 
@@ -101,7 +117,10 @@ int KungFuChessServerApplication::run()
 
         configureServer();
 
-        server.listen(port);
+        server.listen(
+            port
+        );
+
         server.start_accept();
 
         scheduleGameTick();
@@ -153,7 +172,9 @@ void KungFuChessServerApplication::onClose(
     ConnectionHandle connection)
 {
     const auto client =
-        clients.find(connection);
+        clients.find(
+            connection
+        );
 
     if (client == clients.end())
     {
@@ -163,7 +184,9 @@ void KungFuChessServerApplication::onClose(
     const std::string username =
         client->second.username;
 
-    clients.erase(client);
+    clients.erase(
+        client
+    );
 
     std::cout
         << "[SERVER] Client disconnected";
@@ -233,7 +256,9 @@ void KungFuChessServerApplication::handleLoginRequest(
     const std::string& message)
 {
     const auto client =
-        clients.find(connection);
+        clients.find(
+            connection
+        );
 
     if (client == clients.end())
     {
@@ -313,7 +338,8 @@ void KungFuChessServerApplication::handleLoginRequest(
     clientState.playerColor =
         playerColor;
 
-    clientState.loggedIn = true;
+    clientState.loggedIn =
+        true;
 
     const bool registered =
         authResult.status ==
@@ -367,7 +393,9 @@ void KungFuChessServerApplication::handleClickRequest(
     const std::string& message)
 {
     const auto client =
-        clients.find(connection);
+        clients.find(
+            connection
+        );
 
     if (client == clients.end())
     {
@@ -417,17 +445,130 @@ void KungFuChessServerApplication::handleClickRequest(
     broadcastGameState();
 }
 
+void KungFuChessServerApplication::handleGameEnded(
+    Color winnerColor)
+{
+    ClientState* whitePlayer = nullptr;
+    ClientState* blackPlayer = nullptr;
+
+    // מציאת שני השחקנים לפי הצבע שלהם
+    for (auto& client : clients)
+    {
+        ClientState& clientState =
+            client.second;
+
+        if (!clientState.loggedIn ||
+            !clientState.playerColor.has_value())
+        {
+            continue;
+        }
+
+        if (clientState.playerColor.value() ==
+            Color::WHITE)
+        {
+            whitePlayer =
+                &clientState;
+        }
+        else
+        {
+            blackPlayer =
+                &clientState;
+        }
+    }
+
+    if (!whitePlayer ||
+        !blackPlayer)
+    {
+        std::cerr
+            << "[ELO] Could not update ratings: "
+            << "both players must be connected."
+            << std::endl;
+
+        return;
+    }
+
+    const int previousWhiteRating =
+        whitePlayer->rating;
+
+    const int previousBlackRating =
+        blackPlayer->rating;
+
+    const EloResult newRatings =
+        eloService.calculateRatings(
+            previousWhiteRating,
+            previousBlackRating,
+            winnerColor
+        );
+
+    const bool whiteSaved =
+        userRepository.updateRating(
+            whitePlayer->userId,
+            newRatings.whiteRating
+        );
+
+    const bool blackSaved =
+        userRepository.updateRating(
+            blackPlayer->userId,
+            newRatings.blackRating
+        );
+
+    if (!whiteSaved ||
+        !blackSaved)
+    {
+        std::cerr
+            << "[ELO] Could not save "
+            << "the new ratings."
+            << std::endl;
+
+        return;
+    }
+
+    // עדכון הדירוגים בזיכרון השרת
+    whitePlayer->rating =
+        newRatings.whiteRating;
+
+    blackPlayer->rating =
+        newRatings.blackRating;
+
+    std::cout
+        << "[GAME END] Winner: "
+        << (
+            winnerColor == Color::WHITE
+                ? "white"
+                : "black"
+        )
+        << std::endl;
+
+    std::cout
+        << "[ELO] "
+        << whitePlayer->username
+        << ": "
+        << previousWhiteRating
+        << " -> "
+        << whitePlayer->rating
+        << std::endl;
+
+    std::cout
+        << "[ELO] "
+        << blackPlayer->username
+        << ": "
+        << previousBlackRating
+        << " -> "
+        << blackPlayer->rating
+        << std::endl;
+}
+
 bool KungFuChessServerApplication::isSideAssigned(
     Color playerColor) const
 {
     for (const auto& client : clients)
     {
-        const ClientState& state =
+        const ClientState& clientState =
             client.second;
 
-        if (state.loggedIn &&
-            state.playerColor.has_value() &&
-            state.playerColor.value() ==
+        if (clientState.loggedIn &&
+            clientState.playerColor.has_value() &&
+            clientState.playerColor.value() ==
                 playerColor)
         {
             return true;
@@ -593,6 +734,7 @@ void KungFuChessServerApplication::scheduleGameTick()
                     GAME_TICK_MS
                 );
 
+            // פרסום אירועי ניקוד
             for (const auto& removedPiece :
                  removedPieces)
             {
@@ -609,6 +751,24 @@ void KungFuChessServerApplication::scheduleGameTick()
                     << " | Black: "
                     << scoreService.getBlackScore()
                     << std::endl;
+            }
+
+            // פרסום אירוע סיום פעם אחת בלבד
+            if (game.isGameOver() &&
+                !gameEndEventPublished)
+            {
+                const auto winnerColor =
+                    game.getWinnerColor();
+
+                if (winnerColor.has_value())
+                {
+                    gameEndEventPublished =
+                        true;
+
+                    gameEndedBus.publish(
+                        winnerColor.value()
+                    );
+                }
             }
 
             broadcastGameState();

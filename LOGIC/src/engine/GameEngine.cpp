@@ -18,12 +18,26 @@ GameEngine::GameEngine(Board& board)
 }
 
 // קידום הזמן ובדיקת סיום המשחק
-std::vector<PieceRemovedInfo> GameEngine::wait(int milliseconds) {
-    auto removedPieces = arbiter.advance_time(milliseconds, board);
+std::vector<PieceRemovedInfo>
+GameEngine::wait(int milliseconds)
+{
+    auto removedPieces =
+        arbiter.advance_time(
+            milliseconds,
+            board
+        );
 
-    for (const auto& removedPiece : removedPieces) {
-        if (ruleEngine.isGameOver(removedPiece.removedType)) {
+    for (const auto& removedPiece :
+         removedPieces)
+    {
+        if (ruleEngine.isGameOver(
+                removedPiece.removedType))
+        {
             game_over = true;
+
+            winnerColor =
+                removedPiece.scoringColor;
+
             break;
         }
     }
@@ -118,7 +132,7 @@ void GameEngine::requestJump(
     );
 }
 
-// יצירת תמונת מצב לוגית של המשחק
+// יצירת תמונת מצב של המשחק
 GameSnapshot GameEngine::getSnapshot() const
 {
     std::vector<PieceSnapshot> snapshots;
@@ -369,8 +383,3 @@ void GameEngine::handleRestState(
         snapshot.timeRemaining = -1;
     }
 }
-
-// bool GameEngine::hasActiveMotion() const
-// {
-//     return arbiter.has_active_motion();
-// }

@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <vector>
+
 #include "model/piece_removed_info.hpp"
 #include "engine/GameEngine.hpp"
 #include "input/BoardMapper.hpp"
@@ -49,14 +50,17 @@ public:
         int y
     );
 
-    std::vector<PieceRemovedInfo> advanceTime(int milliseconds);
+    std::vector<PieceRemovedInfo> advanceTime(
+        int milliseconds
+    );
 
     GameSnapshot getSnapshot() const;
 
     bool isGameOver() const;
 
-    std::optional<Position>
-    getSelectedPosition(
+    std::optional<Color> getWinnerColor() const;
+
+    std::optional<Position> getSelectedPosition(
         Color playerColor
     ) const;
 };

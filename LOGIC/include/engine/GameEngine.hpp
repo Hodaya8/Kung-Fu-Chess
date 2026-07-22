@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "model/board.hpp"
@@ -17,26 +18,53 @@ private:
     Board& board;
     RuleEngine ruleEngine;
     RealTimeArbiter arbiter;
+
     bool game_over;
+
+    std::optional<Color> winnerColor;
 
     mutable std::map<int, int> restStartTimes;
 
-    void addStaticSnapshots(std::vector<PieceSnapshot>& snapshots) const;
-    void addJumpingSnapshots(std::vector<PieceSnapshot>& snapshots) const;
-    void addMovingSnapshots(std::vector<PieceSnapshot>& snapshots) const;
-    void handleRestState(PieceSnapshot& snapshot, std::shared_ptr<Piece> piece) const;
+    void addStaticSnapshots(
+        std::vector<PieceSnapshot>& snapshots
+    ) const;
+
+    void addJumpingSnapshots(
+        std::vector<PieceSnapshot>& snapshots
+    ) const;
+
+    void addMovingSnapshots(
+        std::vector<PieceSnapshot>& snapshots
+    ) const;
+
+    void handleRestState(
+        PieceSnapshot& snapshot,
+        std::shared_ptr<Piece> piece
+    ) const;
 
 public:
     explicit GameEngine(Board& board);
 
-    void requestMove(Position source, Position destination);
+    void requestMove(
+        Position source,
+        Position destination
+    );
+
     void requestJump(Position cell);
 
-    std::vector<PieceRemovedInfo> wait(int milliseconds);
+    std::vector<PieceRemovedInfo> wait(
+        int milliseconds
+    );
 
     GameSnapshot getSnapshot() const;
 
-    bool isGameOver() const {
+    bool isGameOver() const
+    {
         return game_over;
+    }
+
+    std::optional<Color> getWinnerColor() const
+    {
+        return winnerColor;
     }
 };
