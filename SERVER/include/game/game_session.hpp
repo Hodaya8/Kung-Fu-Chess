@@ -3,54 +3,46 @@
 #include <optional>
 #include <vector>
 
-#include "model/piece_removed_info.hpp"
 #include "engine/GameEngine.hpp"
-#include "input/BoardMapper.hpp"
-#include "input/Controller.hpp"
 #include "model/board.hpp"
 #include "model/game_snapshot.hpp"
 #include "model/piece.hpp"
+#include "model/piece_removed_info.hpp"
 #include "model/position.hpp"
 
 class GameSession
 {
 private:
-    static constexpr int BOARD_ROWS = 8;
-    static constexpr int BOARD_COLUMNS = 8;
-
     Board board;
     GameEngine engine;
-    BoardMapper mapper;
-
-    Controller whiteController;
-    Controller blackController;
 
     static Board createInitialBoard();
 
-    Controller& controllerFor(
-        Color playerColor
-    );
+    bool insideBoard(
+        const Position& position
+    ) const;
 
-    const Controller& controllerFor(
+    bool isPlayerPiece(
+        const Position& position,
         Color playerColor
     ) const;
 
 public:
     GameSession();
 
-    void handleLeftClick(
+    void requestMove(
         Color playerColor,
-        int x,
-        int y
+        Position source,
+        Position destination
     );
 
-    void handleRightClick(
+    void requestJump(
         Color playerColor,
-        int x,
-        int y
+        Position cell
     );
 
-    std::vector<PieceRemovedInfo> advanceTime(
+    std::vector<PieceRemovedInfo>
+    advanceTime(
         int milliseconds
     );
 
@@ -58,9 +50,6 @@ public:
 
     bool isGameOver() const;
 
-    std::optional<Color> getWinnerColor() const;
-
-    std::optional<Position> getSelectedPosition(
-        Color playerColor
-    ) const;
+    std::optional<Color>
+    getWinnerColor() const;
 };

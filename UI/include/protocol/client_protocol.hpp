@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "input/mouse_input.hpp"
+#include "model/position.hpp"
 
 namespace ClientProtocol
 {
@@ -11,7 +11,12 @@ namespace ClientProtocol
         const std::string& password
     );
 
-    std::string createClickRequestMessage(
-        const MouseClick& click
+    std::string createMoveRequestMessage(
+        const Position& source,
+        const Position& destination
+    );
+
+    std::string createJumpRequestMessage(
+        const Position& cell
     );
 }

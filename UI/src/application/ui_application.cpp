@@ -17,6 +17,9 @@ namespace
     constexpr int FRAME_DURATION_MS = 20;
     constexpr int ESC_KEY_CODE = 27;
 
+    constexpr int BOARD_ROWS = 8;
+    constexpr int BOARD_COLUMNS = 8;
+
     const std::string WINDOW_NAME =
         "Image";
 }
@@ -30,17 +33,43 @@ UiApplication::UiApplication(
       username(username),
       password(password),
       renderer(assetsDirectory),
+      boardMapper(
+          BOARD_ROWS,
+          BOARD_COLUMNS
+      ),
+      controller(
+          boardMapper,
+          [this](
+              Position source,
+              Position destination)
+          {
+              sendMoveRequest(
+                  source,
+                  destination
+              );
+          },
+          [this](Position cell)
+          {
+              sendJumpRequest(
+                  cell
+              );
+          }
+      ),
       firstStateRendered(false),
       mouseInput(
           [this](const MouseClick& click)
           {
-              handleMouseClick(click);
+              handleMouseClick(
+                  click
+              );
           }
       ),
       webSocketClient(
           [this](const std::string& message)
           {
-              handleServerMessage(message);
+              handleServerMessage(
+                  message
+              );
           },
           [this]()
           {
@@ -115,15 +144,14 @@ void UiApplication::handleConnected()
             password
         );
 
-    if (webSocketClient.send(message))
+    if (webSocketClient.send(
+            message))
     {
         std::cout
             << "[UI] Login request sent for: "
             << username
             << std::endl;
 
-        // לאחר השליחה אין צורך לשמור
-        // את הסיסמה בשדה של האפליקציה
         password.clear();
     }
 }
@@ -134,7 +162,9 @@ void UiApplication::handleServerMessage(
     try
     {
         const Json json =
-            Json::parse(message);
+            Json::parse(
+                message
+            );
 
         const std::string messageType =
             json.value(
@@ -187,10 +217,40 @@ void UiApplication::handleServerMessage(
 
         if (messageType == "PlayerAssigned")
         {
+            const std::string side =
+                json.at("side")
+                    .get<std::string>();
+
+            Color assignedColor;
+
+            if (side == "white")
+            {
+                assignedColor =
+                    Color::WHITE;
+            }
+            else if (side == "black")
+            {
+                assignedColor =
+                    Color::BLACK;
+            }
+            else
+            {
+                throw std::invalid_argument(
+                    "Unknown player side."
+                );
+            }
+
+            {
+                std::lock_guard<std::mutex>
+                    lock(serverStateMutex);
+
+                playerColor =
+                    assignedColor;
+            }
+
             std::cout
                 << "[UI] Assigned side: "
-                << json.at("side")
-                       .get<std::string>()
+                << side
                 << std::endl;
 
             return;
@@ -227,30 +287,6 @@ void UiApplication::handleServerMessage(
 
             return;
         }
-
-        if (messageType == "SelectionState")
-        {
-            const bool hasSelection =
-                json.at("hasSelection")
-                    .get<bool>();
-
-            std::lock_guard<std::mutex>
-                lock(serverStateMutex);
-
-            if (hasSelection)
-            {
-                selectedPosition.emplace(
-                    json.at("row")
-                        .get<int>(),
-                    json.at("col")
-                        .get<int>()
-                );
-            }
-            else
-            {
-                selectedPosition.reset();
-            }
-        }
     }
     catch (const std::exception& exception)
     {
@@ -264,18 +300,98 @@ void UiApplication::handleServerMessage(
 void UiApplication::handleMouseClick(
     const MouseClick& click)
 {
+    std::optional<ServerGameState>
+        currentState;
+
+    std::optional<Color>
+        currentPlayerColor;
+
+    {
+        std::lock_guard<std::mutex>
+            lock(serverStateMutex);
+
+        currentState =
+            latestServerState;
+
+        currentPlayerColor =
+            playerColor;
+    }
+
+    if (!currentState.has_value() ||
+        !currentPlayerColor.has_value())
+    {
+        return;
+    }
+
+    if (currentState->gameOver)
+    {
+        return;
+    }
+
+    if (click.button ==
+        MouseButton::Left)
+    {
+        controller.handleLeftClick(
+            click.x,
+            click.y,
+            currentState->snapshot,
+            currentPlayerColor.value()
+        );
+    }
+    else
+    {
+        controller.handleRightClick(
+            click.x,
+            click.y,
+            currentState->snapshot,
+            currentPlayerColor.value()
+        );
+    }
+}
+
+void UiApplication::sendMoveRequest(
+    Position source,
+    Position destination)
+{
     const std::string message =
-        ClientProtocol::createClickRequestMessage(
-            click
+        ClientProtocol::createMoveRequestMessage(
+            source,
+            destination
         );
 
-    if (webSocketClient.send(message))
+    if (webSocketClient.send(
+            message))
     {
         std::cout
-            << "[UI] Click sent: ("
-            << click.x
+            << "[UI] Move request sent: ("
+            << source.getRow()
             << ", "
-            << click.y
+            << source.getCol()
+            << ") -> ("
+            << destination.getRow()
+            << ", "
+            << destination.getCol()
+            << ")"
+            << std::endl;
+    }
+}
+
+void UiApplication::sendJumpRequest(
+    Position cell)
+{
+    const std::string message =
+        ClientProtocol::createJumpRequestMessage(
+            cell
+        );
+
+    if (webSocketClient.send(
+            message))
+    {
+        std::cout
+            << "[UI] Jump request sent: ("
+            << cell.getRow()
+            << ", "
+            << cell.getCol()
             << ")"
             << std::endl;
     }
@@ -286,18 +402,12 @@ void UiApplication::renderLatestState()
     std::optional<ServerGameState>
         stateForRendering;
 
-    std::optional<Position>
-        selectionForRendering;
-
     {
         std::lock_guard<std::mutex>
             lock(serverStateMutex);
 
         stateForRendering =
             latestServerState;
-
-        selectionForRendering =
-            selectedPosition;
     }
 
     if (!stateForRendering.has_value())
@@ -316,7 +426,8 @@ void UiApplication::renderLatestState()
             << " pieces."
             << std::endl;
 
-        firstStateRendered = true;
+        firstStateRendered =
+            true;
     }
 
     const RenderModel renderModel =
@@ -329,6 +440,6 @@ void UiApplication::renderLatestState()
         stateForRendering->gameOver,
         stateForRendering->whiteScore,
         stateForRendering->blackScore,
-        selectionForRendering
+        controller.getSelectedPosition()
     );
 }

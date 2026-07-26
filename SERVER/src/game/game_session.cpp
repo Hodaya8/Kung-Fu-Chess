@@ -29,65 +29,91 @@ Board GameSession::createInitialBoard()
 
 GameSession::GameSession()
     : board(createInitialBoard()),
-      engine(board),
-      mapper(
-          BOARD_ROWS,
-          BOARD_COLUMNS
-      ),
-      whiteController(
-          board,
-          mapper,
-          engine,
-          Color::WHITE
-      ),
-      blackController(
-          board,
-          mapper,
-          engine,
-          Color::BLACK
-      )
+      engine(board)
 {
 }
 
-Controller& GameSession::controllerFor(
-    Color playerColor)
+bool GameSession::insideBoard(
+    const Position& position) const
 {
-    return playerColor == Color::WHITE
-        ? whiteController
-        : blackController;
+    return
+        position.getRow() >= 0 &&
+        position.getRow() < board.rows() &&
+        position.getCol() >= 0 &&
+        position.getCol() < board.cols();
 }
 
-const Controller& GameSession::controllerFor(
+bool GameSession::isPlayerPiece(
+    const Position& position,
     Color playerColor) const
 {
-    return playerColor == Color::WHITE
-        ? whiteController
-        : blackController;
+    if (!insideBoard(
+            position))
+    {
+        return false;
+    }
+
+    const auto piece =
+        board.at(
+            position.getRow(),
+            position.getCol()
+        );
+
+    return
+        piece &&
+        piece->getColor() ==
+            playerColor;
 }
 
-void GameSession::handleLeftClick(
+void GameSession::requestMove(
     Color playerColor,
-    int x,
-    int y)
+    Position source,
+    Position destination)
 {
-    controllerFor(
-        playerColor
-    ).click(
-        x,
-        y
+    if (engine.isGameOver())
+    {
+        return;
+    }
+
+    if (!insideBoard(source) ||
+        !insideBoard(destination))
+    {
+        return;
+    }
+
+    // השרת לא סומך על הלקוח:
+    // רק כלי ששייך למשתמש יכול להישלח למנוע.
+    if (!isPlayerPiece(
+            source,
+            playerColor))
+    {
+        return;
+    }
+
+    engine.requestMove(
+        source,
+        destination
     );
 }
 
-void GameSession::handleRightClick(
+void GameSession::requestJump(
     Color playerColor,
-    int x,
-    int y)
+    Position cell)
 {
-    controllerFor(
-        playerColor
-    ).jump(
-        x,
-        y
+    if (engine.isGameOver())
+    {
+        return;
+    }
+
+    if (!isPlayerPiece(
+            cell,
+            playerColor))
+    {
+        return;
+    }
+
+    engine.requestJump(
+        cell
     );
 }
 
@@ -114,21 +140,4 @@ std::optional<Color>
 GameSession::getWinnerColor() const
 {
     return engine.getWinnerColor();
-}
-
-std::optional<Position>
-GameSession::getSelectedPosition(
-    Color playerColor) const
-{
-    const Controller& controller =
-        controllerFor(
-            playerColor
-        );
-
-    if (!controller.isSelected())
-    {
-        return std::nullopt;
-    }
-
-    return controller.getSelected();
 }

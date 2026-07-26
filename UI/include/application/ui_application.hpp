@@ -4,7 +4,10 @@
 #include <optional>
 #include <string>
 
+#include "input/BoardMapper.hpp"
+#include "input/Controller.hpp"
 #include "input/mouse_input.hpp"
+#include "model/piece.hpp"
 #include "model/position.hpp"
 #include "network/server_game_state.hpp"
 #include "network/websocket_client.hpp"
@@ -42,8 +45,11 @@ private:
     std::optional<ServerGameState>
         latestServerState;
 
-    std::optional<Position>
-        selectedPosition;
+    std::optional<Color>
+        playerColor;
+
+    BoardMapper boardMapper;
+    Controller controller;
 
     bool firstStateRendered;
 
@@ -58,6 +64,15 @@ private:
 
     void handleMouseClick(
         const MouseClick& click
+    );
+
+    void sendMoveRequest(
+        Position source,
+        Position destination
+    );
+
+    void sendJumpRequest(
+        Position cell
     );
 
     void renderLatestState();

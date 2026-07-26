@@ -32,7 +32,8 @@ namespace
     }
 }
 
-KungFuChessServerApplication::KungFuChessServerApplication(
+KungFuChessServerApplication::
+KungFuChessServerApplication(
     int port,
     const std::string& databasePath)
     : port(port),
@@ -40,9 +41,10 @@ KungFuChessServerApplication::KungFuChessServerApplication(
       userRepository(databaseManager),
       authService(userRepository)
 {
-    // עדכון ניקוד המשחק
     pieceRemovedBus.subscribe(
-        [this](const PieceRemovedInfo& removedPiece)
+        [this](
+            const PieceRemovedInfo&
+                removedPiece)
         {
             scoreService.handlePieceRemoved(
                 removedPiece
@@ -50,9 +52,9 @@ KungFuChessServerApplication::KungFuChessServerApplication(
         }
     );
 
-    // טיפול בדירוגים בסיום המשחק
     gameEndedBus.subscribe(
-        [this](const Color& winnerColor)
+        [this](
+            const Color& winnerColor)
         {
             handleGameEnded(
                 winnerColor
@@ -61,7 +63,8 @@ KungFuChessServerApplication::KungFuChessServerApplication(
     );
 }
 
-void KungFuChessServerApplication::configureServer()
+void KungFuChessServerApplication::
+configureServer()
 {
     server.clear_access_channels(
         websocketpp::log::alevel::all
@@ -71,7 +74,8 @@ void KungFuChessServerApplication::configureServer()
     server.set_reuse_addr(true);
 
     server.set_open_handler(
-        [this](ConnectionHandle connection)
+        [this](
+            ConnectionHandle connection)
         {
             onOpen(
                 connection
@@ -80,7 +84,8 @@ void KungFuChessServerApplication::configureServer()
     );
 
     server.set_close_handler(
-        [this](ConnectionHandle connection)
+        [this](
+            ConnectionHandle connection)
         {
             onClose(
                 connection
@@ -134,7 +139,9 @@ int KungFuChessServerApplication::run()
 
         return 0;
     }
-    catch (const websocketpp::exception& exception)
+    catch (
+        const websocketpp::exception&
+            exception)
     {
         std::cerr
             << "[SERVER ERROR] "
@@ -143,7 +150,9 @@ int KungFuChessServerApplication::run()
 
         return 1;
     }
-    catch (const std::exception& exception)
+    catch (
+        const std::exception&
+            exception)
     {
         std::cerr
             << "[SERVER ERROR] "
@@ -228,9 +237,19 @@ void KungFuChessServerApplication::onMessage(
             return;
         }
 
-        if (messageType == "ClickRequest")
+        if (messageType == "MoveRequest")
         {
-            handleClickRequest(
+            handleMoveRequest(
+                connection,
+                payload
+            );
+
+            return;
+        }
+
+        if (messageType == "JumpRequest")
+        {
+            handleJumpRequest(
                 connection,
                 payload
             );
@@ -242,7 +261,9 @@ void KungFuChessServerApplication::onMessage(
             "Unknown message type."
         );
     }
-    catch (const std::exception& exception)
+    catch (
+        const std::exception&
+            exception)
     {
         std::cerr
             << "[SERVER] Invalid request: "
@@ -251,7 +272,8 @@ void KungFuChessServerApplication::onMessage(
     }
 }
 
-void KungFuChessServerApplication::handleLoginRequest(
+void KungFuChessServerApplication::
+handleLoginRequest(
     ConnectionHandle connection,
     const std::string& message)
 {
@@ -321,7 +343,7 @@ void KungFuChessServerApplication::handleLoginRequest(
         return;
     }
 
-    const Color playerColor =
+    const Color assignedColor =
         isSideAssigned(Color::WHITE)
             ? Color::BLACK
             : Color::WHITE;
@@ -336,7 +358,7 @@ void KungFuChessServerApplication::handleLoginRequest(
         authResult.user.rating;
 
     clientState.playerColor =
-        playerColor;
+        assignedColor;
 
     clientState.loggedIn =
         true;
@@ -347,18 +369,20 @@ void KungFuChessServerApplication::handleLoginRequest(
 
     sendTextMessage(
         connection,
-        JsonProtocol::createLoginAcceptedMessage(
-            clientState.username,
-            clientState.rating,
-            registered
-        )
+        JsonProtocol::
+            createLoginAcceptedMessage(
+                clientState.username,
+                clientState.rating,
+                registered
+            )
     );
 
     sendTextMessage(
         connection,
-        JsonProtocol::createPlayerAssignedMessage(
-            playerColor
-        )
+        JsonProtocol::
+            createPlayerAssignedMessage(
+                assignedColor
+            )
     );
 
     std::cout
@@ -374,21 +398,17 @@ void KungFuChessServerApplication::handleLoginRequest(
         << clientState.rating
         << ", side "
         << (
-            playerColor == Color::WHITE
+            assignedColor == Color::WHITE
                 ? "white"
                 : "black"
         )
         << std::endl;
 
     broadcastGameState();
-
-    sendSelectionState(
-        connection,
-        playerColor
-    );
 }
 
-void KungFuChessServerApplication::handleClickRequest(
+void KungFuChessServerApplication::
+handleMoveRequest(
     ConnectionHandle connection,
     const std::string& message)
 {
@@ -405,66 +425,115 @@ void KungFuChessServerApplication::handleClickRequest(
     const ClientState& clientState =
         client->second;
 
-    if (!clientState.loggedIn ||
-        !clientState.playerColor.has_value())
+    if (
+        !clientState.loggedIn ||
+        !clientState.playerColor.has_value()
+    )
     {
         return;
     }
 
-    const JsonProtocol::ClickRequest request =
-        JsonProtocol::parseClickRequest(
+    const JsonProtocol::MoveRequest request =
+        JsonProtocol::parseMoveRequest(
             message
         );
 
-    const Color playerColor =
-        clientState.playerColor.value();
-
-    if (request.button ==
-        JsonProtocol::ClickButton::Left)
-    {
-        game.handleLeftClick(
-            playerColor,
-            request.x,
-            request.y
-        );
-    }
-    else
-    {
-        game.handleRightClick(
-            playerColor,
-            request.x,
-            request.y
-        );
-    }
-
-    sendSelectionState(
-        connection,
-        playerColor
+    game.requestMove(
+        clientState.playerColor.value(),
+        request.source,
+        request.destination
     );
+
+    std::cout
+        << "[SERVER] Move request: ("
+        << request.source.getRow()
+        << ", "
+        << request.source.getCol()
+        << ") -> ("
+        << request.destination.getRow()
+        << ", "
+        << request.destination.getCol()
+        << ")"
+        << std::endl;
 
     broadcastGameState();
 }
 
-void KungFuChessServerApplication::handleGameEnded(
+void KungFuChessServerApplication::
+handleJumpRequest(
+    ConnectionHandle connection,
+    const std::string& message)
+{
+    const auto client =
+        clients.find(
+            connection
+        );
+
+    if (client == clients.end())
+    {
+        return;
+    }
+
+    const ClientState& clientState =
+        client->second;
+
+    if (
+        !clientState.loggedIn ||
+        !clientState.playerColor.has_value()
+    )
+    {
+        return;
+    }
+
+    const JsonProtocol::JumpRequest request =
+        JsonProtocol::parseJumpRequest(
+            message
+        );
+
+    game.requestJump(
+        clientState.playerColor.value(),
+        request.cell
+    );
+
+    std::cout
+        << "[SERVER] Jump request: ("
+        << request.cell.getRow()
+        << ", "
+        << request.cell.getCol()
+        << ")"
+        << std::endl;
+
+    broadcastGameState();
+}
+
+void KungFuChessServerApplication::
+handleGameEnded(
     Color winnerColor)
 {
-    ClientState* whitePlayer = nullptr;
-    ClientState* blackPlayer = nullptr;
+    ClientState* whitePlayer =
+        nullptr;
 
-    // מציאת שני השחקנים לפי הצבע שלהם
-    for (auto& client : clients)
+    ClientState* blackPlayer =
+        nullptr;
+
+    for (auto& client :
+         clients)
     {
         ClientState& clientState =
             client.second;
 
-        if (!clientState.loggedIn ||
-            !clientState.playerColor.has_value())
+        if (
+            !clientState.loggedIn ||
+            !clientState.playerColor.has_value()
+        )
         {
             continue;
         }
 
-        if (clientState.playerColor.value() ==
-            Color::WHITE)
+        if (
+            clientState.playerColor.value() ==
+            Color::WHITE
+        )
         {
             whitePlayer =
                 &clientState;
@@ -476,8 +545,10 @@ void KungFuChessServerApplication::handleGameEnded(
         }
     }
 
-    if (!whitePlayer ||
-        !blackPlayer)
+    if (
+        !whitePlayer ||
+        !blackPlayer
+    )
     {
         std::cerr
             << "[ELO] Could not update ratings: "
@@ -512,8 +583,10 @@ void KungFuChessServerApplication::handleGameEnded(
             newRatings.blackRating
         );
 
-    if (!whiteSaved ||
-        !blackSaved)
+    if (
+        !whiteSaved ||
+        !blackSaved
+    )
     {
         std::cerr
             << "[ELO] Could not save "
@@ -523,7 +596,6 @@ void KungFuChessServerApplication::handleGameEnded(
         return;
     }
 
-    // עדכון הדירוגים בזיכרון השרת
     whitePlayer->rating =
         newRatings.whiteRating;
 
@@ -558,18 +630,22 @@ void KungFuChessServerApplication::handleGameEnded(
         << std::endl;
 }
 
-bool KungFuChessServerApplication::isSideAssigned(
+bool KungFuChessServerApplication::
+isSideAssigned(
     Color playerColor) const
 {
-    for (const auto& client : clients)
+    for (const auto& client :
+         clients)
     {
         const ClientState& clientState =
             client.second;
 
-        if (clientState.loggedIn &&
+        if (
+            clientState.loggedIn &&
             clientState.playerColor.has_value() &&
             clientState.playerColor.value() ==
-                playerColor)
+                playerColor
+        )
         {
             return true;
         }
@@ -578,14 +654,18 @@ bool KungFuChessServerApplication::isSideAssigned(
     return false;
 }
 
-bool KungFuChessServerApplication::isUsernameConnected(
+bool KungFuChessServerApplication::
+isUsernameConnected(
     const std::string& username) const
 {
-    for (const auto& client : clients)
+    for (const auto& client :
+         clients)
     {
-        if (client.second.loggedIn &&
+        if (
+            client.second.loggedIn &&
             client.second.username ==
-                username)
+                username
+        )
         {
             return true;
         }
@@ -595,11 +675,13 @@ bool KungFuChessServerApplication::isUsernameConnected(
 }
 
 std::size_t
-KungFuChessServerApplication::loggedInPlayerCount() const
+KungFuChessServerApplication::
+loggedInPlayerCount() const
 {
     std::size_t count = 0;
 
-    for (const auto& client : clients)
+    for (const auto& client :
+         clients)
     {
         if (client.second.loggedIn)
         {
@@ -610,7 +692,8 @@ KungFuChessServerApplication::loggedInPlayerCount() const
     return count;
 }
 
-void KungFuChessServerApplication::broadcastGameState()
+void KungFuChessServerApplication::
+broadcastGameState()
 {
     if (loggedInPlayerCount() == 0)
     {
@@ -628,7 +711,8 @@ void KungFuChessServerApplication::broadcastGameState()
             scoreService.getBlackScore()
         );
 
-    for (const auto& client : clients)
+    for (const auto& client :
+         clients)
     {
         if (!client.second.loggedIn)
         {
@@ -642,25 +726,13 @@ void KungFuChessServerApplication::broadcastGameState()
     }
 }
 
-void KungFuChessServerApplication::sendSelectionState(
-    ConnectionHandle connection,
-    Color playerColor)
-{
-    sendTextMessage(
-        connection,
-        JsonProtocol::createSelectionStateMessage(
-            game.getSelectedPosition(
-                playerColor
-            )
-        )
-    );
-}
-
-void KungFuChessServerApplication::sendTextMessage(
+void KungFuChessServerApplication::
+sendTextMessage(
     ConnectionHandle connection,
     const std::string& message)
 {
-    websocketpp::lib::error_code error;
+    websocketpp::lib::error_code
+        error;
 
     server.send(
         connection,
@@ -678,19 +750,22 @@ void KungFuChessServerApplication::sendTextMessage(
     }
 }
 
-void KungFuChessServerApplication::sendLoginRejected(
+void KungFuChessServerApplication::
+sendLoginRejected(
     ConnectionHandle connection,
     const std::string& reason)
 {
     sendTextMessage(
         connection,
-        JsonProtocol::createLoginRejectedMessage(
-            reason
-        )
+        JsonProtocol::
+            createLoginRejectedMessage(
+                reason
+            )
     );
 }
 
-void KungFuChessServerApplication::closeFullConnection(
+void KungFuChessServerApplication::
+closeFullConnection(
     ConnectionHandle connection)
 {
     sendTextMessage(
@@ -698,7 +773,8 @@ void KungFuChessServerApplication::closeFullConnection(
         JsonProtocol::createGameFullMessage()
     );
 
-    websocketpp::lib::error_code error;
+    websocketpp::lib::error_code
+        error;
 
     server.close(
         connection,
@@ -717,24 +793,25 @@ void KungFuChessServerApplication::closeFullConnection(
     }
 }
 
-void KungFuChessServerApplication::scheduleGameTick()
+void KungFuChessServerApplication::
+scheduleGameTick()
 {
     server.set_timer(
         GAME_TICK_MS,
         [this](
-            const websocketpp::lib::error_code& error)
+            const websocketpp::lib::error_code&
+                error)
         {
             if (error)
             {
                 return;
             }
 
-            auto removedPieces =
+            const auto removedPieces =
                 game.advanceTime(
                     GAME_TICK_MS
                 );
 
-            // פרסום אירועי ניקוד
             for (const auto& removedPiece :
                  removedPieces)
             {
@@ -753,9 +830,10 @@ void KungFuChessServerApplication::scheduleGameTick()
                     << std::endl;
             }
 
-            // פרסום אירוע סיום פעם אחת בלבד
-            if (game.isGameOver() &&
-                !gameEndEventPublished)
+            if (
+                game.isGameOver() &&
+                !gameEndEventPublished
+            )
             {
                 const auto winnerColor =
                     game.getWinnerColor();

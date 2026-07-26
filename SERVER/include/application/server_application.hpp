@@ -40,8 +40,11 @@ private:
     Server server;
     GameSession game;
 
-    EventBus<PieceRemovedInfo> pieceRemovedBus;
-    EventBus<Color> gameEndedBus;
+    EventBus<PieceRemovedInfo>
+        pieceRemovedBus;
+
+    EventBus<Color>
+        gameEndedBus;
 
     ScoreService scoreService;
     EloService eloService;
@@ -74,7 +77,12 @@ private:
         const std::string& message
     );
 
-    void handleClickRequest(
+    void handleMoveRequest(
+        ConnectionHandle connection,
+        const std::string& message
+    );
+
+    void handleJumpRequest(
         ConnectionHandle connection,
         const std::string& message
     );
@@ -91,14 +99,10 @@ private:
         const std::string& username
     ) const;
 
-    std::size_t loggedInPlayerCount() const;
+    std::size_t
+    loggedInPlayerCount() const;
 
     void broadcastGameState();
-
-    void sendSelectionState(
-        ConnectionHandle connection,
-        Color playerColor
-    );
 
     void sendTextMessage(
         ConnectionHandle connection,

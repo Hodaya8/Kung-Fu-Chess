@@ -9,7 +9,10 @@ using Json = nlohmann::json;
 
 namespace
 {
-    std::string pieceStateToString(PieceState state)
+    constexpr int BOARD_SIZE = 8;
+
+    std::string pieceStateToString(
+        PieceState state)
     {
         switch (state)
         {
@@ -37,11 +40,43 @@ namespace
         );
     }
 
-    std::string colorToString(Color color)
+    std::string colorToString(
+        Color color)
     {
         return color == Color::WHITE
             ? "white"
             : "black";
+    }
+
+    Position readPosition(
+        const Json& json,
+        const std::string& rowField,
+        const std::string& columnField)
+    {
+        const int row =
+            json.at(rowField)
+                .get<int>();
+
+        const int column =
+            json.at(columnField)
+                .get<int>();
+
+        if (
+            row < 0 ||
+            row >= BOARD_SIZE ||
+            column < 0 ||
+            column >= BOARD_SIZE
+        )
+        {
+            throw std::invalid_argument(
+                "Position is outside the board."
+            );
+        }
+
+        return Position(
+            row,
+            column
+        );
     }
 }
 
@@ -49,7 +84,9 @@ std::string JsonProtocol::getMessageType(
     const std::string& message)
 {
     const Json json =
-        Json::parse(message);
+        Json::parse(
+            message
+        );
 
     return json.at("messageType")
                .get<std::string>();
@@ -60,7 +97,9 @@ JsonProtocol::parseLoginRequest(
     const std::string& message)
 {
     const Json request =
-        Json::parse(message);
+        Json::parse(
+            message
+        );
 
     const std::string messageType =
         request.at("messageType")
@@ -81,8 +120,10 @@ JsonProtocol::parseLoginRequest(
         request.at("password")
                .get<std::string>();
 
-    if (username.empty() ||
-        password.empty())
+    if (
+        username.empty() ||
+        password.empty()
+    )
     {
         throw std::invalid_argument(
             "Username and password cannot be empty."
@@ -95,66 +136,80 @@ JsonProtocol::parseLoginRequest(
     };
 }
 
-JsonProtocol::ClickRequest
-JsonProtocol::parseClickRequest(
+JsonProtocol::MoveRequest
+JsonProtocol::parseMoveRequest(
     const std::string& message)
 {
     const Json request =
-        Json::parse(message);
+        Json::parse(
+            message
+        );
 
     const std::string messageType =
         request.at("messageType")
                .get<std::string>();
 
-    if (messageType != "ClickRequest")
+    if (messageType != "MoveRequest")
     {
         throw std::invalid_argument(
-            "Expected ClickRequest."
+            "Expected MoveRequest."
         );
     }
 
-    const int x =
-        request.at("x").get<int>();
-
-    const int y =
-        request.at("y").get<int>();
-
-    if (x < 0 || y < 0)
-    {
-        throw std::invalid_argument(
-            "Click coordinates cannot be negative."
+    const Position source =
+        readPosition(
+            request,
+            "sourceRow",
+            "sourceCol"
         );
-    }
 
-    const std::string buttonText =
-        request.at("button")
-               .get<std::string>();
-
-    ClickButton button;
-
-    if (buttonText == "left")
-    {
-        button = ClickButton::Left;
-    }
-    else if (buttonText == "right")
-    {
-        button = ClickButton::Right;
-    }
-    else
-    {
-        throw std::invalid_argument(
-            "Unknown click button."
+    const Position destination =
+        readPosition(
+            request,
+            "destinationRow",
+            "destinationCol"
         );
-    }
 
-    return ClickRequest{
-        x,
-        y,
-        button
+    return MoveRequest{
+        source,
+        destination
     };
 }
 
-std::string JsonProtocol::createLoginAcceptedMessage(
+JsonProtocol::JumpRequest
+JsonProtocol::parseJumpRequest(
+    const std::string& message)
+{
+    const Json request =
+        Json::parse(
+            message
+        );
+
+    const std::string messageType =
+        request.at("messageType")
+               .get<std::string>();
+
+    if (messageType != "JumpRequest")
+    {
+        throw std::invalid_argument(
+            "Expected JumpRequest."
+        );
+    }
+
+    const Position cell =
+        readPosition(
+            request,
+            "row",
+            "col"
+        );
+
+    return JumpRequest{
+        cell
+    };
+}
+
+std::string
+JsonProtocol::createLoginAcceptedMessage(
     const std::string& username,
     int rating,
     bool registered)
@@ -181,7 +236,8 @@ std::string JsonProtocol::createLoginAcceptedMessage(
     return response.dump();
 }
 
-std::string JsonProtocol::createLoginRejectedMessage(
+std::string
+JsonProtocol::createLoginRejectedMessage(
     const std::string& reason)
 {
     const Json response = {
@@ -198,15 +254,18 @@ std::string JsonProtocol::createLoginRejectedMessage(
     return response.dump();
 }
 
-std::string JsonProtocol::createGameStateMessage(
+std::string
+JsonProtocol::createGameStateMessage(
     const GameSnapshot& snapshot,
     bool gameOver,
     int whiteScore,
     int blackScore)
 {
-    Json pieces = Json::array();
+    Json pieces =
+        Json::array();
 
-    for (const auto& piece : snapshot.getPieces())
+    for (const auto& piece :
+         snapshot.getPieces())
     {
         pieces.push_back({
             {
@@ -284,33 +343,8 @@ std::string JsonProtocol::createGameStateMessage(
     return response.dump();
 }
 
-std::string JsonProtocol::createSelectionStateMessage(
-    const std::optional<Position>& selectedPosition)
-{
-    Json response = {
-        {
-            "messageType",
-            "SelectionState"
-        },
-        {
-            "hasSelection",
-            selectedPosition.has_value()
-        }
-    };
-
-    if (selectedPosition.has_value())
-    {
-        response["row"] =
-            selectedPosition->getRow();
-
-        response["col"] =
-            selectedPosition->getCol();
-    }
-
-    return response.dump();
-}
-
-std::string JsonProtocol::createPlayerAssignedMessage(
+std::string
+JsonProtocol::createPlayerAssignedMessage(
     Color playerColor)
 {
     const Json response = {
@@ -329,7 +363,8 @@ std::string JsonProtocol::createPlayerAssignedMessage(
     return response.dump();
 }
 
-std::string JsonProtocol::createGameFullMessage()
+std::string
+JsonProtocol::createGameFullMessage()
 {
     const Json response = {
         {

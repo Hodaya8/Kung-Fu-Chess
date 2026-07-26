@@ -1,7 +1,5 @@
 #include "protocol/client_protocol.hpp"
 
-#include <string>
-
 #include <nlohmann/json.hpp>
 
 using Json = nlohmann::json;
@@ -30,30 +28,52 @@ ClientProtocol::createLoginRequestMessage(
 }
 
 std::string
-ClientProtocol::createClickRequestMessage(
-    const MouseClick& click)
+ClientProtocol::createMoveRequestMessage(
+    const Position& source,
+    const Position& destination)
 {
-    const std::string button =
-        click.button == MouseButton::Left
-            ? "left"
-            : "right";
-
     const Json request = {
         {
             "messageType",
-            "ClickRequest"
+            "MoveRequest"
         },
         {
-            "x",
-            click.x
+            "sourceRow",
+            source.getRow()
         },
         {
-            "y",
-            click.y
+            "sourceCol",
+            source.getCol()
         },
         {
-            "button",
-            button
+            "destinationRow",
+            destination.getRow()
+        },
+        {
+            "destinationCol",
+            destination.getCol()
+        }
+    };
+
+    return request.dump();
+}
+
+std::string
+ClientProtocol::createJumpRequestMessage(
+    const Position& cell)
+{
+    const Json request = {
+        {
+            "messageType",
+            "JumpRequest"
+        },
+        {
+            "row",
+            cell.getRow()
+        },
+        {
+            "col",
+            cell.getCol()
         }
     };
 

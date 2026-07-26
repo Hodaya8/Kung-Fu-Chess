@@ -1,0 +1,1765 @@
+﻿
+===== .\SERVER\include\game\game_session.hpp =====
+#pragma once
+
+#include <optional>
+#include <vector>
+
+#include "model/piece_removed_info.hpp"
+#include "engine/GameEngine.hpp"
+#include "input/BoardMapper.hpp"
+#include "input/Controller.hpp"
+#include "model/board.hpp"
+#include "model/game_snapshot.hpp"
+#include "model/piece.hpp"
+#include "model/position.hpp"
+
+class GameSession
+{
+private:
+    static constexpr int BOARD_ROWS = 8;
+    static constexpr int BOARD_COLUMNS = 8;
+
+    Board board;
+    GameEngine engine;
+    BoardMapper mapper;
+
+    Controller whiteController;
+    Controller blackController;
+
+    static Board createInitialBoard();
+
+    Controller& controllerFor(
+        Color playerColor
+    );
+
+    const Controller& controllerFor(
+        Color playerColor
+    ) const;
+
+public:
+    GameSession();
+
+    void handleLeftClick(
+        Color playerColor,
+        int x,
+        int y
+    );
+
+    void handleRightClick(
+        Color playerColor,
+        int x,
+        int y
+    );
+
+    std::vector<PieceRemovedInfo> advanceTime(
+        int milliseconds
+    );
+
+    GameSnapshot getSnapshot() const;
+
+    bool isGameOver() const;
+
+    std::optional<Color> getWinnerColor() const;
+
+    std::optional<Position> getSelectedPosition(
+        Color playerColor
+    ) const;
+};
+
+===== .\SERVER\src\game\game_session.cpp =====
+#include "game/game_session.hpp"
+
+#include <sstream>
+#include <string>
+
+#include "io/board_parser.hpp"
+
+Board GameSession::createInitialBoard()
+{
+    const std::string initialBoard =
+        "Board:\n"
+        "bR bN bB bQ bK bB bN bR\n"
+        "bP bP bP bP bP bP bP bP\n"
+        ". . . . . . . .\n"
+        ". . . . . . . .\n"
+        ". . . . . . . .\n"
+        ". . . . . . . .\n"
+        "wP wP wP wP wP wP wP wP\n"
+        "wR wN wB wQ wK wB wN wR\n";
+
+    std::stringstream stream(
+        initialBoard
+    );
+
+    return BoardParser::parse(
+        stream
+    );
+}
+
+GameSession::GameSession()
+    : board(createInitialBoard()),
+      engine(board),
+      mapper(
+          BOARD_ROWS,
+          BOARD_COLUMNS
+      ),
+      whiteController(
+          board,
+          mapper,
+          engine,
+          Color::WHITE
+      ),
+      blackController(
+          board,
+          mapper,
+          engine,
+          Color::BLACK
+      )
+{
+}
+
+Controller& GameSession::controllerFor(
+    Color playerColor)
+{
+    return playerColor == Color::WHITE
+        ? whiteController
+        : blackController;
+}
+
+const Controller& GameSession::controllerFor(
+    Color playerColor) const
+{
+    return playerColor == Color::WHITE
+        ? whiteController
+        : blackController;
+}
+
+void GameSession::handleLeftClick(
+    Color playerColor,
+    int x,
+    int y)
+{
+    controllerFor(
+        playerColor
+    ).click(
+        x,
+        y
+    );
+}
+
+void GameSession::handleRightClick(
+    Color playerColor,
+    int x,
+    int y)
+{
+    controllerFor(
+        playerColor
+    ).jump(
+        x,
+        y
+    );
+}
+
+std::vector<PieceRemovedInfo>
+GameSession::advanceTime(
+    int milliseconds)
+{
+    return engine.wait(
+        milliseconds
+    );
+}
+
+GameSnapshot GameSession::getSnapshot() const
+{
+    return engine.getSnapshot();
+}
+
+bool GameSession::isGameOver() const
+{
+    return engine.isGameOver();
+}
+
+std::optional<Color>
+GameSession::getWinnerColor() const
+{
+    return engine.getWinnerColor();
+}
+
+std::optional<Position>
+GameSession::getSelectedPosition(
+    Color playerColor) const
+{
+    const Controller& controller =
+        controllerFor(
+            playerColor
+        );
+
+    if (!controller.isSelected())
+    {
+        return std::nullopt;
+    }
+
+    return controller.getSelected();
+}
+
+===== .\SERVER\include\protocol\json_protocol.hpp =====
+#pragma once
+
+#include <optional>
+#include <string>
+
+#include "model/game_snapshot.hpp"
+#include "model/piece.hpp"
+#include "model/position.hpp"
+
+namespace JsonProtocol
+{
+    enum class ClickButton
+    {
+        Left,
+        Right
+    };
+
+    struct ClickRequest
+    {
+        int x;
+        int y;
+        ClickButton button;
+    };
+
+    struct LoginRequest
+    {
+        std::string username;
+        std::string password;
+    };
+
+    std::string getMessageType(
+        const std::string& message
+    );
+
+    LoginRequest parseLoginRequest(
+        const std::string& message
+    );
+
+    ClickRequest parseClickRequest(
+        const std::string& message
+    );
+
+    std::string createLoginAcceptedMessage(
+        const std::string& username,
+        int rating,
+        bool registered
+    );
+
+    std::string createLoginRejectedMessage(
+        const std::string& reason
+    );
+
+    std::string createGameStateMessage(
+        const GameSnapshot& snapshot,
+        bool gameOver,
+        int whiteScore,
+        int blackScore
+    );
+
+    std::string createSelectionStateMessage(
+        const std::optional<Position>& selectedPosition
+    );
+
+    std::string createPlayerAssignedMessage(
+        Color playerColor
+    );
+
+    std::string createGameFullMessage();
+}
+
+===== .\SERVER\src\protocol\json_protocol.cpp =====
+#include "protocol/json_protocol.hpp"
+
+#include <stdexcept>
+#include <string>
+
+#include <nlohmann/json.hpp>
+
+using Json = nlohmann::json;
+
+namespace
+{
+    std::string pieceStateToString(PieceState state)
+    {
+        switch (state)
+        {
+            case PieceState::idle:
+                return "idle";
+
+            case PieceState::move:
+                return "move";
+
+            case PieceState::jump:
+                return "jump";
+
+            case PieceState::long_rest:
+                return "long_rest";
+
+            case PieceState::short_rest:
+                return "short_rest";
+
+            case PieceState::captured:
+                return "captured";
+        }
+
+        throw std::invalid_argument(
+            "Unknown piece state."
+        );
+    }
+
+    std::string colorToString(Color color)
+    {
+        return color == Color::WHITE
+            ? "white"
+            : "black";
+    }
+}
+
+std::string JsonProtocol::getMessageType(
+    const std::string& message)
+{
+    const Json json =
+        Json::parse(message);
+
+    return json.at("messageType")
+               .get<std::string>();
+}
+
+JsonProtocol::LoginRequest
+JsonProtocol::parseLoginRequest(
+    const std::string& message)
+{
+    const Json request =
+        Json::parse(message);
+
+    const std::string messageType =
+        request.at("messageType")
+               .get<std::string>();
+
+    if (messageType != "LoginRequest")
+    {
+        throw std::invalid_argument(
+            "Expected LoginRequest."
+        );
+    }
+
+    const std::string username =
+        request.at("username")
+               .get<std::string>();
+
+    const std::string password =
+        request.at("password")
+               .get<std::string>();
+
+    if (username.empty() ||
+        password.empty())
+    {
+        throw std::invalid_argument(
+            "Username and password cannot be empty."
+        );
+    }
+
+    return LoginRequest{
+        username,
+        password
+    };
+}
+
+JsonProtocol::ClickRequest
+JsonProtocol::parseClickRequest(
+    const std::string& message)
+{
+    const Json request =
+        Json::parse(message);
+
+    const std::string messageType =
+        request.at("messageType")
+               .get<std::string>();
+
+    if (messageType != "ClickRequest")
+    {
+        throw std::invalid_argument(
+            "Expected ClickRequest."
+        );
+    }
+
+    const int x =
+        request.at("x").get<int>();
+
+    const int y =
+        request.at("y").get<int>();
+
+    if (x < 0 || y < 0)
+    {
+        throw std::invalid_argument(
+            "Click coordinates cannot be negative."
+        );
+    }
+
+    const std::string buttonText =
+        request.at("button")
+               .get<std::string>();
+
+    ClickButton button;
+
+    if (buttonText == "left")
+    {
+        button = ClickButton::Left;
+    }
+    else if (buttonText == "right")
+    {
+        button = ClickButton::Right;
+    }
+    else
+    {
+        throw std::invalid_argument(
+            "Unknown click button."
+        );
+    }
+
+    return ClickRequest{
+        x,
+        y,
+        button
+    };
+}
+
+std::string JsonProtocol::createLoginAcceptedMessage(
+    const std::string& username,
+    int rating,
+    bool registered)
+{
+    const Json response = {
+        {
+            "messageType",
+            "LoginAccepted"
+        },
+        {
+            "username",
+            username
+        },
+        {
+            "rating",
+            rating
+        },
+        {
+            "registered",
+            registered
+        }
+    };
+
+    return response.dump();
+}
+
+std::string JsonProtocol::createLoginRejectedMessage(
+    const std::string& reason)
+{
+    const Json response = {
+        {
+            "messageType",
+            "LoginRejected"
+        },
+        {
+            "reason",
+            reason
+        }
+    };
+
+    return response.dump();
+}
+
+std::string JsonProtocol::createGameStateMessage(
+    const GameSnapshot& snapshot,
+    bool gameOver,
+    int whiteScore,
+    int blackScore)
+{
+    Json pieces = Json::array();
+
+    for (const auto& piece : snapshot.getPieces())
+    {
+        pieces.push_back({
+            {
+                "type",
+                piece.type
+            },
+            {
+                "state",
+                pieceStateToString(
+                    piece.state
+                )
+            },
+            {
+                "row",
+                piece.row
+            },
+            {
+                "col",
+                piece.col
+            },
+            {
+                "destinationRow",
+                piece.destinationRow
+            },
+            {
+                "destinationCol",
+                piece.destinationCol
+            },
+            {
+                "actionStartTime",
+                piece.actionStartTime
+            },
+            {
+                "actionEndTime",
+                piece.actionEndTime
+            },
+            {
+                "timeRemaining",
+                piece.timeRemaining
+            },
+            {
+                "stateDuration",
+                piece.stateDuration
+            }
+        });
+    }
+
+    const Json response = {
+        {
+            "messageType",
+            "GameState"
+        },
+        {
+            "currentTime",
+            snapshot.getCurrentTime()
+        },
+        {
+            "gameOver",
+            gameOver
+        },
+        {
+            "whiteScore",
+            whiteScore
+        },
+        {
+            "blackScore",
+            blackScore
+        },
+        {
+            "pieces",
+            pieces
+        }
+    };
+
+    return response.dump();
+}
+
+std::string JsonProtocol::createSelectionStateMessage(
+    const std::optional<Position>& selectedPosition)
+{
+    Json response = {
+        {
+            "messageType",
+            "SelectionState"
+        },
+        {
+            "hasSelection",
+            selectedPosition.has_value()
+        }
+    };
+
+    if (selectedPosition.has_value())
+    {
+        response["row"] =
+            selectedPosition->getRow();
+
+        response["col"] =
+            selectedPosition->getCol();
+    }
+
+    return response.dump();
+}
+
+std::string JsonProtocol::createPlayerAssignedMessage(
+    Color playerColor)
+{
+    const Json response = {
+        {
+            "messageType",
+            "PlayerAssigned"
+        },
+        {
+            "side",
+            colorToString(
+                playerColor
+            )
+        }
+    };
+
+    return response.dump();
+}
+
+std::string JsonProtocol::createGameFullMessage()
+{
+    const Json response = {
+        {
+            "messageType",
+            "ConnectionRejected"
+        },
+        {
+            "reason",
+            "GameFull"
+        }
+    };
+
+    return response.dump();
+}
+
+===== .\SERVER\include\application\server_application.hpp =====
+#pragma once
+
+#include <cstddef>
+#include <map>
+#include <memory>
+#include <string>
+
+#include <websocketpp/config/asio_no_tls.hpp>
+#include <websocketpp/server.hpp>
+
+#include "application/client_state.hpp"
+#include "auth/auth_service.hpp"
+#include "database/databaseManager.hpp"
+#include "events/event_bus.hpp"
+#include "game/game_session.hpp"
+#include "model/piece_removed_info.hpp"
+#include "rating/elo_service.hpp"
+#include "repositories/userRepository.hpp"
+#include "scoring/score_service.hpp"
+
+class KungFuChessServerApplication
+{
+private:
+    using Server =
+        websocketpp::server<
+            websocketpp::config::asio
+        >;
+
+    using ConnectionHandle =
+        websocketpp::connection_hdl;
+
+    static constexpr int GAME_TICK_MS = 20;
+
+    int port;
+
+    DatabaseManager databaseManager;
+    UserRepository userRepository;
+    AuthService authService;
+
+    Server server;
+    GameSession game;
+
+    EventBus<PieceRemovedInfo> pieceRemovedBus;
+    EventBus<Color> gameEndedBus;
+
+    ScoreService scoreService;
+    EloService eloService;
+
+    bool gameEndEventPublished = false;
+
+    std::map<
+        ConnectionHandle,
+        ClientState,
+        std::owner_less<ConnectionHandle>
+    > clients;
+
+    void configureServer();
+
+    void onOpen(
+        ConnectionHandle connection
+    );
+
+    void onClose(
+        ConnectionHandle connection
+    );
+
+    void onMessage(
+        ConnectionHandle connection,
+        Server::message_ptr message
+    );
+
+    void handleLoginRequest(
+        ConnectionHandle connection,
+        const std::string& message
+    );
+
+    void handleClickRequest(
+        ConnectionHandle connection,
+        const std::string& message
+    );
+
+    void handleGameEnded(
+        Color winnerColor
+    );
+
+    bool isSideAssigned(
+        Color playerColor
+    ) const;
+
+    bool isUsernameConnected(
+        const std::string& username
+    ) const;
+
+    std::size_t loggedInPlayerCount() const;
+
+    void broadcastGameState();
+
+    void sendSelectionState(
+        ConnectionHandle connection,
+        Color playerColor
+    );
+
+    void sendTextMessage(
+        ConnectionHandle connection,
+        const std::string& message
+    );
+
+    void sendLoginRejected(
+        ConnectionHandle connection,
+        const std::string& reason
+    );
+
+    void closeFullConnection(
+        ConnectionHandle connection
+    );
+
+    void scheduleGameTick();
+
+public:
+    KungFuChessServerApplication(
+        int port,
+        const std::string& databasePath
+    );
+
+    int run();
+
+    KungFuChessServerApplication(
+        const KungFuChessServerApplication&
+    ) = delete;
+
+    KungFuChessServerApplication& operator=(
+        const KungFuChessServerApplication&
+    ) = delete;
+};
+
+===== .\SERVER\src\application\server_application.cpp =====
+#include "application/server_application.hpp"
+
+#include <exception>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+#include "protocol/json_protocol.hpp"
+
+namespace
+{
+    std::string authFailureReason(
+        AuthStatus status)
+    {
+        switch (status)
+        {
+            case AuthStatus::InvalidPassword:
+                return "InvalidPassword";
+
+            case AuthStatus::InvalidInput:
+                return "InvalidInput";
+
+            case AuthStatus::DatabaseError:
+                return "DatabaseError";
+
+            case AuthStatus::Authenticated:
+            case AuthStatus::Registered:
+                return "Unknown";
+        }
+
+        return "Unknown";
+    }
+}
+
+KungFuChessServerApplication::KungFuChessServerApplication(
+    int port,
+    const std::string& databasePath)
+    : port(port),
+      databaseManager(databasePath),
+      userRepository(databaseManager),
+      authService(userRepository)
+{
+    // ׳¢׳“׳›׳•׳ ׳ ׳™׳§׳•׳“ ׳”׳׳©׳—׳§
+    pieceRemovedBus.subscribe(
+        [this](const PieceRemovedInfo& removedPiece)
+        {
+            scoreService.handlePieceRemoved(
+                removedPiece
+            );
+        }
+    );
+
+    // ׳˜׳™׳₪׳•׳ ׳‘׳“׳™׳¨׳•׳’׳™׳ ׳‘׳¡׳™׳•׳ ׳”׳׳©׳—׳§
+    gameEndedBus.subscribe(
+        [this](const Color& winnerColor)
+        {
+            handleGameEnded(
+                winnerColor
+            );
+        }
+    );
+}
+
+void KungFuChessServerApplication::configureServer()
+{
+    server.clear_access_channels(
+        websocketpp::log::alevel::all
+    );
+
+    server.init_asio();
+    server.set_reuse_addr(true);
+
+    server.set_open_handler(
+        [this](ConnectionHandle connection)
+        {
+            onOpen(
+                connection
+            );
+        }
+    );
+
+    server.set_close_handler(
+        [this](ConnectionHandle connection)
+        {
+            onClose(
+                connection
+            );
+        }
+    );
+
+    server.set_message_handler(
+        [this](
+            ConnectionHandle connection,
+            Server::message_ptr message)
+        {
+            onMessage(
+                connection,
+                message
+            );
+        }
+    );
+}
+
+int KungFuChessServerApplication::run()
+{
+    try
+    {
+        if (!databaseManager.init())
+        {
+            return 1;
+        }
+
+        if (!userRepository.createTable())
+        {
+            return 1;
+        }
+
+        configureServer();
+
+        server.listen(
+            port
+        );
+
+        server.start_accept();
+
+        scheduleGameTick();
+
+        std::cout
+            << "[SERVER] Listening on port "
+            << port
+            << std::endl;
+
+        server.run();
+
+        return 0;
+    }
+    catch (const websocketpp::exception& exception)
+    {
+        std::cerr
+            << "[SERVER ERROR] "
+            << exception.what()
+            << std::endl;
+
+        return 1;
+    }
+    catch (const std::exception& exception)
+    {
+        std::cerr
+            << "[SERVER ERROR] "
+            << exception.what()
+            << std::endl;
+
+        return 1;
+    }
+}
+
+void KungFuChessServerApplication::onOpen(
+    ConnectionHandle connection)
+{
+    clients.emplace(
+        connection,
+        ClientState{}
+    );
+
+    std::cout
+        << "[SERVER] Client connected. "
+        << "Waiting for login."
+        << std::endl;
+}
+
+void KungFuChessServerApplication::onClose(
+    ConnectionHandle connection)
+{
+    const auto client =
+        clients.find(
+            connection
+        );
+
+    if (client == clients.end())
+    {
+        return;
+    }
+
+    const std::string username =
+        client->second.username;
+
+    clients.erase(
+        client
+    );
+
+    std::cout
+        << "[SERVER] Client disconnected";
+
+    if (!username.empty())
+    {
+        std::cout
+            << ": "
+            << username;
+    }
+
+    std::cout
+        << ". Active players: "
+        << loggedInPlayerCount()
+        << std::endl;
+}
+
+void KungFuChessServerApplication::onMessage(
+    ConnectionHandle connection,
+    Server::message_ptr message)
+{
+    try
+    {
+        const std::string payload =
+            message->get_payload();
+
+        const std::string messageType =
+            JsonProtocol::getMessageType(
+                payload
+            );
+
+        if (messageType == "LoginRequest")
+        {
+            handleLoginRequest(
+                connection,
+                payload
+            );
+
+            return;
+        }
+
+        if (messageType == "ClickRequest")
+        {
+            handleClickRequest(
+                connection,
+                payload
+            );
+
+            return;
+        }
+
+        throw std::invalid_argument(
+            "Unknown message type."
+        );
+    }
+    catch (const std::exception& exception)
+    {
+        std::cerr
+            << "[SERVER] Invalid request: "
+            << exception.what()
+            << std::endl;
+    }
+}
+
+void KungFuChessServerApplication::handleLoginRequest(
+    ConnectionHandle connection,
+    const std::string& message)
+{
+    const auto client =
+        clients.find(
+            connection
+        );
+
+    if (client == clients.end())
+    {
+        return;
+    }
+
+    ClientState& clientState =
+        client->second;
+
+    if (clientState.loggedIn)
+    {
+        sendLoginRejected(
+            connection,
+            "AlreadyLoggedIn"
+        );
+
+        return;
+    }
+
+    const JsonProtocol::LoginRequest request =
+        JsonProtocol::parseLoginRequest(
+            message
+        );
+
+    if (loggedInPlayerCount() >= 2)
+    {
+        closeFullConnection(
+            connection
+        );
+
+        return;
+    }
+
+    if (isUsernameConnected(
+            request.username))
+    {
+        sendLoginRejected(
+            connection,
+            "AlreadyConnected"
+        );
+
+        return;
+    }
+
+    const AuthResult authResult =
+        authService.loginOrRegister(
+            request.username,
+            request.password
+        );
+
+    if (!authResult.isSuccess())
+    {
+        sendLoginRejected(
+            connection,
+            authFailureReason(
+                authResult.status
+            )
+        );
+
+        return;
+    }
+
+    const Color playerColor =
+        isSideAssigned(Color::WHITE)
+            ? Color::BLACK
+            : Color::WHITE;
+
+    clientState.userId =
+        authResult.user.id;
+
+    clientState.username =
+        authResult.user.username;
+
+    clientState.rating =
+        authResult.user.rating;
+
+    clientState.playerColor =
+        playerColor;
+
+    clientState.loggedIn =
+        true;
+
+    const bool registered =
+        authResult.status ==
+        AuthStatus::Registered;
+
+    sendTextMessage(
+        connection,
+        JsonProtocol::createLoginAcceptedMessage(
+            clientState.username,
+            clientState.rating,
+            registered
+        )
+    );
+
+    sendTextMessage(
+        connection,
+        JsonProtocol::createPlayerAssignedMessage(
+            playerColor
+        )
+    );
+
+    std::cout
+        << "[SERVER] User "
+        << (
+            registered
+                ? "registered"
+                : "authenticated"
+        )
+        << ": "
+        << clientState.username
+        << ", rating "
+        << clientState.rating
+        << ", side "
+        << (
+            playerColor == Color::WHITE
+                ? "white"
+                : "black"
+        )
+        << std::endl;
+
+    broadcastGameState();
+
+    sendSelectionState(
+        connection,
+        playerColor
+    );
+}
+
+void KungFuChessServerApplication::handleClickRequest(
+    ConnectionHandle connection,
+    const std::string& message)
+{
+    const auto client =
+        clients.find(
+            connection
+        );
+
+    if (client == clients.end())
+    {
+        return;
+    }
+
+    const ClientState& clientState =
+        client->second;
+
+    if (!clientState.loggedIn ||
+        !clientState.playerColor.has_value())
+    {
+        return;
+    }
+
+    const JsonProtocol::ClickRequest request =
+        JsonProtocol::parseClickRequest(
+            message
+        );
+
+    const Color playerColor =
+        clientState.playerColor.value();
+
+    if (request.button ==
+        JsonProtocol::ClickButton::Left)
+    {
+        game.handleLeftClick(
+            playerColor,
+            request.x,
+            request.y
+        );
+    }
+    else
+    {
+        game.handleRightClick(
+            playerColor,
+            request.x,
+            request.y
+        );
+    }
+
+    sendSelectionState(
+        connection,
+        playerColor
+    );
+
+    broadcastGameState();
+}
+
+void KungFuChessServerApplication::handleGameEnded(
+    Color winnerColor)
+{
+    ClientState* whitePlayer = nullptr;
+    ClientState* blackPlayer = nullptr;
+
+    // ׳׳¦׳™׳׳× ׳©׳ ׳™ ׳”׳©׳—׳§׳ ׳™׳ ׳׳₪׳™ ׳”׳¦׳‘׳¢ ׳©׳׳”׳
+    for (auto& client : clients)
+    {
+        ClientState& clientState =
+            client.second;
+
+        if (!clientState.loggedIn ||
+            !clientState.playerColor.has_value())
+        {
+            continue;
+        }
+
+        if (clientState.playerColor.value() ==
+            Color::WHITE)
+        {
+            whitePlayer =
+                &clientState;
+        }
+        else
+        {
+            blackPlayer =
+                &clientState;
+        }
+    }
+
+    if (!whitePlayer ||
+        !blackPlayer)
+    {
+        std::cerr
+            << "[ELO] Could not update ratings: "
+            << "both players must be connected."
+            << std::endl;
+
+        return;
+    }
+
+    const int previousWhiteRating =
+        whitePlayer->rating;
+
+    const int previousBlackRating =
+        blackPlayer->rating;
+
+    const EloResult newRatings =
+        eloService.calculateRatings(
+            previousWhiteRating,
+            previousBlackRating,
+            winnerColor
+        );
+
+    const bool whiteSaved =
+        userRepository.updateRating(
+            whitePlayer->userId,
+            newRatings.whiteRating
+        );
+
+    const bool blackSaved =
+        userRepository.updateRating(
+            blackPlayer->userId,
+            newRatings.blackRating
+        );
+
+    if (!whiteSaved ||
+        !blackSaved)
+    {
+        std::cerr
+            << "[ELO] Could not save "
+            << "the new ratings."
+            << std::endl;
+
+        return;
+    }
+
+    // ׳¢׳“׳›׳•׳ ׳”׳“׳™׳¨׳•׳’׳™׳ ׳‘׳–׳™׳›׳¨׳•׳ ׳”׳©׳¨׳×
+    whitePlayer->rating =
+        newRatings.whiteRating;
+
+    blackPlayer->rating =
+        newRatings.blackRating;
+
+    std::cout
+        << "[GAME END] Winner: "
+        << (
+            winnerColor == Color::WHITE
+                ? "white"
+                : "black"
+        )
+        << std::endl;
+
+    std::cout
+        << "[ELO] "
+        << whitePlayer->username
+        << ": "
+        << previousWhiteRating
+        << " -> "
+        << whitePlayer->rating
+        << std::endl;
+
+    std::cout
+        << "[ELO] "
+        << blackPlayer->username
+        << ": "
+        << previousBlackRating
+        << " -> "
+        << blackPlayer->rating
+        << std::endl;
+}
+
+bool KungFuChessServerApplication::isSideAssigned(
+    Color playerColor) const
+{
+    for (const auto& client : clients)
+    {
+        const ClientState& clientState =
+            client.second;
+
+        if (clientState.loggedIn &&
+            clientState.playerColor.has_value() &&
+            clientState.playerColor.value() ==
+                playerColor)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool KungFuChessServerApplication::isUsernameConnected(
+    const std::string& username) const
+{
+    for (const auto& client : clients)
+    {
+        if (client.second.loggedIn &&
+            client.second.username ==
+                username)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+std::size_t
+KungFuChessServerApplication::loggedInPlayerCount() const
+{
+    std::size_t count = 0;
+
+    for (const auto& client : clients)
+    {
+        if (client.second.loggedIn)
+        {
+            ++count;
+        }
+    }
+
+    return count;
+}
+
+void KungFuChessServerApplication::broadcastGameState()
+{
+    if (loggedInPlayerCount() == 0)
+    {
+        return;
+    }
+
+    const GameSnapshot snapshot =
+        game.getSnapshot();
+
+    const std::string message =
+        JsonProtocol::createGameStateMessage(
+            snapshot,
+            game.isGameOver(),
+            scoreService.getWhiteScore(),
+            scoreService.getBlackScore()
+        );
+
+    for (const auto& client : clients)
+    {
+        if (!client.second.loggedIn)
+        {
+            continue;
+        }
+
+        sendTextMessage(
+            client.first,
+            message
+        );
+    }
+}
+
+void KungFuChessServerApplication::sendSelectionState(
+    ConnectionHandle connection,
+    Color playerColor)
+{
+    sendTextMessage(
+        connection,
+        JsonProtocol::createSelectionStateMessage(
+            game.getSelectedPosition(
+                playerColor
+            )
+        )
+    );
+}
+
+void KungFuChessServerApplication::sendTextMessage(
+    ConnectionHandle connection,
+    const std::string& message)
+{
+    websocketpp::lib::error_code error;
+
+    server.send(
+        connection,
+        message,
+        websocketpp::frame::opcode::text,
+        error
+    );
+
+    if (error)
+    {
+        std::cerr
+            << "[SERVER] Failed to send message: "
+            << error.message()
+            << std::endl;
+    }
+}
+
+void KungFuChessServerApplication::sendLoginRejected(
+    ConnectionHandle connection,
+    const std::string& reason)
+{
+    sendTextMessage(
+        connection,
+        JsonProtocol::createLoginRejectedMessage(
+            reason
+        )
+    );
+}
+
+void KungFuChessServerApplication::closeFullConnection(
+    ConnectionHandle connection)
+{
+    sendTextMessage(
+        connection,
+        JsonProtocol::createGameFullMessage()
+    );
+
+    websocketpp::lib::error_code error;
+
+    server.close(
+        connection,
+        websocketpp::close::status::normal,
+        "Game is full.",
+        error
+    );
+
+    if (error)
+    {
+        std::cerr
+            << "[SERVER] Failed to close "
+            << "full connection: "
+            << error.message()
+            << std::endl;
+    }
+}
+
+void KungFuChessServerApplication::scheduleGameTick()
+{
+    server.set_timer(
+        GAME_TICK_MS,
+        [this](
+            const websocketpp::lib::error_code& error)
+        {
+            if (error)
+            {
+                return;
+            }
+
+            auto removedPieces =
+                game.advanceTime(
+                    GAME_TICK_MS
+                );
+
+            // ׳₪׳¨׳¡׳•׳ ׳׳™׳¨׳•׳¢׳™ ׳ ׳™׳§׳•׳“
+            for (const auto& removedPiece :
+                 removedPieces)
+            {
+                pieceRemovedBus.publish(
+                    removedPiece
+                );
+            }
+
+            if (!removedPieces.empty())
+            {
+                std::cout
+                    << "[SCORE] White: "
+                    << scoreService.getWhiteScore()
+                    << " | Black: "
+                    << scoreService.getBlackScore()
+                    << std::endl;
+            }
+
+            // ׳₪׳¨׳¡׳•׳ ׳׳™׳¨׳•׳¢ ׳¡׳™׳•׳ ׳₪׳¢׳ ׳׳—׳× ׳‘׳׳‘׳“
+            if (game.isGameOver() &&
+                !gameEndEventPublished)
+            {
+                const auto winnerColor =
+                    game.getWinnerColor();
+
+                if (winnerColor.has_value())
+                {
+                    gameEndEventPublished =
+                        true;
+
+                    gameEndedBus.publish(
+                        winnerColor.value()
+                    );
+                }
+            }
+
+            broadcastGameState();
+
+            scheduleGameTick();
+        }
+    );
+}
+
+===== .\SERVER\include\application\client_state.hpp =====
+#pragma once
+
+#include <optional>
+#include <string>
+
+#include "model/piece.hpp"
+#include "tables/user_class.hpp"
+
+struct ClientState
+{
+    int userId = 0;
+    std::string username;
+    int rating = User::INITIAL_RATING;
+
+    std::optional<Color> playerColor;
+
+    bool loggedIn = false;
+};
+
+===== .\UI\CMakeLists.txt =====
+cmake_minimum_required(VERSION 3.16)
+
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
+project(KungFuChess)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+
+# =========================================================
+# LogicLib
+# =========================================================
+
+# ׳׳׳₪׳©׳¨ ׳׳‘׳ ׳•׳× ׳׳× ׳”-UI ׳’׳ ׳׳×׳•׳ ׳”׳₪׳¨׳•׳™׳§׳˜ ׳”׳¨׳׳©׳™
+# ׳•׳’׳ ׳™׳©׳™׳¨׳•׳× ׳׳×׳•׳ ׳×׳™׳§׳™׳™׳× UI.
+if(NOT TARGET LogicLib)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../LOGIC"
+        "${CMAKE_CURRENT_BINARY_DIR}/LOGIC"
+    )
+endif()
+
+# =========================================================
+# JSON
+# =========================================================
+
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY
+        https://github.com/nlohmann/json.git
+    GIT_TAG
+        v3.11.2
+)
+
+FetchContent_MakeAvailable(json)
+
+# =========================================================
+# Asio
+# =========================================================
+
+FetchContent_Declare(
+    asio
+    GIT_REPOSITORY
+        https://github.com/chriskohlhoff/asio.git
+    GIT_TAG
+        asio-1-28-0
+)
+
+FetchContent_MakeAvailable(asio)
+
+# =========================================================
+# WebSocket++
+# =========================================================
+
+FetchContent_Declare(
+    websocketpp
+    GIT_REPOSITORY
+        https://github.com/zaphoyd/websocketpp.git
+    GIT_TAG
+        0.8.2
+)
+
+FetchContent_MakeAvailable(websocketpp)
+
+# =========================================================
+# ׳§׳•׳‘׳¦׳™ UI
+# =========================================================
+
+file(
+    GLOB_RECURSE
+    UI_SOURCES
+    CONFIGURE_DEPENDS
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
+
+file(
+    GLOB_RECURSE
+    UI_HEADERS
+    CONFIGURE_DEPENDS
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
+)
+
+# =========================================================
+# ׳§׳•׳‘׳¥ ׳”׳”׳₪׳¢׳׳”
+# =========================================================
+
+add_executable(
+    ${PROJECT_NAME}
+
+    ${UI_SOURCES}
+    ${UI_HEADERS}
+)
+
+find_package(
+    Threads
+    REQUIRED
+)
+
+# =========================================================
+# OpenCV
+# =========================================================
+
+set(
+    OPENCV_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../lib"
+)
+
+set(
+    OPENCV_INCLUDE_DIR
+    "${OPENCV_DIR}/include"
+)
+
+set(
+    OPENCV_LIB_DIR
+    "${OPENCV_DIR}/bin"
+)
+
+# =========================================================
+# ׳×׳™׳§׳™׳•׳× include
+# =========================================================
+
+target_include_directories(
+    ${PROJECT_NAME}
+    PRIVATE
+
+    # ׳׳׳₪׳©׳¨ includes ׳›׳’׳•׳:
+    # include "network/websocket_client.hpp"
+    # include "render/renderer.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+
+    "${OPENCV_INCLUDE_DIR}"
+    "${asio_SOURCE_DIR}/asio/include"
+    "${websocketpp_SOURCE_DIR}"
+)
+
+# =========================================================
+# ׳×׳™׳§׳™׳™׳× ׳¡׳₪׳¨׳™׳•׳× OpenCV
+# =========================================================
+
+target_link_directories(
+    ${PROJECT_NAME}
+    PRIVATE
+
+    "${OPENCV_LIB_DIR}"
+)
+
+# =========================================================
+# ׳¡׳₪׳¨׳™׳•׳×
+# =========================================================
+
+target_link_libraries(
+    ${PROJECT_NAME}
+    PRIVATE
+
+    LogicLib
+    nlohmann_json::nlohmann_json
+    Threads::Threads
+
+    $<$<CONFIG:Debug>:${OPENCV_LIB_DIR}/opencv_world451d.lib>
+    $<$<CONFIG:Release>:${OPENCV_LIB_DIR}/opencv_world451.lib>
+    $<$<CONFIG:RelWithDebInfo>:${OPENCV_LIB_DIR}/opencv_world451.lib>
+    $<$<CONFIG:MinSizeRel>:${OPENCV_LIB_DIR}/opencv_world451.lib>
+)
+
+# =========================================================
+# ׳”׳’׳“׳¨׳•׳× ׳§׳•׳׳₪׳™׳׳¦׳™׳”
+# =========================================================
+
+target_compile_definitions(
+    ${PROJECT_NAME}
+    PRIVATE
+
+    ASIO_STANDALONE
+    _WEBSOCKETPP_CPP11_STL_
+)
+
+# =========================================================
+# ׳”׳¢׳×׳§׳× DLL ׳©׳ OpenCV
+# =========================================================
+
+if(WIN32)
+    add_custom_command(
+        TARGET ${PROJECT_NAME}
+        POST_BUILD
+
+        COMMAND
+            ${CMAKE_COMMAND}
+            -E
+            copy_if_different
+
+        $<$<CONFIG:Debug>:${OPENCV_LIB_DIR}/opencv_world451d.dll>
+        $<$<CONFIG:Release>:${OPENCV_LIB_DIR}/opencv_world451.dll>
+        $<$<CONFIG:RelWithDebInfo>:${OPENCV_LIB_DIR}/opencv_world451.dll>
+        $<$<CONFIG:MinSizeRel>:${OPENCV_LIB_DIR}/opencv_world451.dll>
+
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
+endif()

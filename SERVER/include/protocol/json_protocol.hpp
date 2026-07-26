@@ -1,6 +1,5 @@
 #pragma once
 
-#include <optional>
 #include <string>
 
 #include "model/game_snapshot.hpp"
@@ -9,23 +8,21 @@
 
 namespace JsonProtocol
 {
-    enum class ClickButton
-    {
-        Left,
-        Right
-    };
-
-    struct ClickRequest
-    {
-        int x;
-        int y;
-        ClickButton button;
-    };
-
     struct LoginRequest
     {
         std::string username;
         std::string password;
+    };
+
+    struct MoveRequest
+    {
+        Position source;
+        Position destination;
+    };
+
+    struct JumpRequest
+    {
+        Position cell;
     };
 
     std::string getMessageType(
@@ -36,7 +33,11 @@ namespace JsonProtocol
         const std::string& message
     );
 
-    ClickRequest parseClickRequest(
+    MoveRequest parseMoveRequest(
+        const std::string& message
+    );
+
+    JumpRequest parseJumpRequest(
         const std::string& message
     );
 
@@ -55,10 +56,6 @@ namespace JsonProtocol
         bool gameOver,
         int whiteScore,
         int blackScore
-    );
-
-    std::string createSelectionStateMessage(
-        const std::optional<Position>& selectedPosition
     );
 
     std::string createPlayerAssignedMessage(
