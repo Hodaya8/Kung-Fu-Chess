@@ -1,7 +1,5 @@
 # Cloud Server Architecture for KungFu Chess - Load & Scale Design
 **Cloud System Design Document**
-**Author:** [Your Name]
-
 ---
 
 ## 1. Introduction & System Objectives
@@ -15,7 +13,70 @@ The system is designed to meet the following high-scale requirements:
 
 ---
 
-## 2. Microservices Breakdown (Docker Containers)
+## 2. Microservices Architecture & Traffic Flow (Docker Containers)
+To support 10 million concurrent players without memory or CPU exhaustion, the backend is decoupled into 5 specialized service types, orchestrated via Kubernetes or K3s. 
+
+The following architecture diagram illustrates how the components interact, separating real-time client communication from game logic and persistent storage:
+
+```mermaid
+graph TD
+    %% Clients Layer
+    subgraph Clients [Clients Layer - 10M Concurrent Players]
+        C1[Player 1 - White]
+        C2[Player 2 - Black]
+        C3[Viewers / Spectators]
+    end
+
+    %% Load Balancer
+    LB[Cloud Load Balancer]
+    C1 -- WebSocket --> LB
+    C2 -- WebSocket --> LB
+    C3 -- WebSocket --> LB
+
+    %% Gateways Layer
+    subgraph Gateways [Stateless Gateways Layer - Dozens/Hundreds of Pods]
+        GW1[WS Gateway Node 1]
+        GW2[WS Gateway Node 2]
+        GW3[WS Gateway Node N]
+    end
+    LB ---> GW1 & GW2 & GW3
+
+    %% Middle Tier - Redis Bus & Cache
+    subgraph MiddleTier [Middle Tier - Redis In-Memory Cluster]
+        REDIS[(Redis Cache - Live Room States)]
+        BUS[[Pub/Sub Message Bus]]
+    end
+
+    %% Gateway Connections to Middle Tier
+    GW1 <== Pub/Sub ==> BUS
+    GW2 <== Pub/Sub ==> BUS
+    GW3 <== Pub/Sub ==> BUS
+    GW1 & GW2 & GW3 --- REDIS
+
+    %% Backend Services Layer
+    subgraph LogicLayer [Backend Services - Thousands of Pods]
+        MM[Matchmaker Service]
+        LOGIC1[Logic Server 1 - Rooms 1 to 5K]
+        LOGIC2[Logic Server 2 - Rooms 5K to 10K]
+        WORKER[Background Workers]
+    end
+
+    %% Service Connections
+    MM <-->|Poll Waiting Queue| REDIS
+    LOGIC1 <== Pub/Sub ==> BUS
+    LOGIC2 <== Pub/Sub ==> BUS
+    LOGIC1 & LOGIC2 <-->|Read/Write Board State| REDIS
+    LOGIC1 & LOGIC2 -.->|Emit GameEnd Event| WORKER
+
+    %% Persistent Storage
+    subgraph Storage [Persistent Storage Layer]
+        DB[(PostgreSQL / MongoDB - 100M Users)]
+        S3[Cloud Object Storage - Game Logs]
+    end
+
+    WORKER -->|Update ELO & Users| DB
+    WORKER -->|Archive Logs| S3
+    
 To support 10 million concurrent players without memory or CPU exhaustion, the backend is decoupled into 5 specialized service types, orchestrated via Kubernetes or K3s:
 
 | Container Type | Role & Responsibilities | Scaling & Memory Characteristics |
@@ -29,9 +90,7 @@ To support 10 million concurrent players without memory or CPU exhaustion, the b
 ---
 
 ## 3. Data Management for 100M Users (Polyglot Persistence)
-Using a local SQLite database is unfeasible for 100 million users due to file-level locking, concurrency bottlenecks, and the inability to scale horizontally across multiple nodes.
-
-Instead, the architecture implements a dual-database approach:
+ the architecture implements a dual-database approach:
 1. **Persistent Database (PostgreSQL / MongoDB):** Stores static and long-term records: registered user profiles, hashed passwords, historical game logs, and permanent ELO ratings[cite: 1]. Configured with Sharding and Primary-Replica replication for high performance and redundancy.
 2. **High-Speed In-Memory Cache (Redis Cluster):** Manages active user sessions, live room states, and matchmaking queues. RAM access is orders of magnitude faster than disk access, preventing bottlenecks and offloading read/write pressure from the primary database.
 
