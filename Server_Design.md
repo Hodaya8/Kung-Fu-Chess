@@ -1,88 +1,89 @@
-# ארכיטקטורת שרת ענן למשחק KungFu Chess - תכנון עומסים (Scale Design)
-**קובץ תכנון מערכת ענן (Server Design)**
+# Cloud Server Architecture for KungFu Chess - Load & Scale Design
+**Cloud System Design Document**
+**Author:** [Your Name]
 
 ---
 
-## 1. מבוא ומטרות המערכת
-מסמך זה מציג את התכנון הארכיטקטוני למעבר משרת יחיד (Single-Process Server) המבוסס על חיבורי WebSocket ישירים ושמירה מקומית בקובץ SQLite[cite: 1], לארכיטקטורת ענן מבוזרת המבוססת על שירותים זעירים (Microservices). 
+## 1. Introduction & System Objectives
+This document details the architectural transition from a single-process server based on direct WebSocket connections and local SQLite storage[cite: 1], to a distributed cloud microservices architecture.
 
-המערכת מתוכננת לעמוד בדרישות העומס הבאות:
-* תמיכה בנפח של **100 מיליון משתמשים רשומים**.
-* תמיכה בנפח של **10 מיליון שחקנים פעילים בו-זמנית** (המייצגים 5 מיליון חדרים פעילים במקביל).
-* ניהול זרימת נתונים מהירה בזמן אמת ללא תקיעות וללא השהייה (No Lag / Freezing).
-* עמידות גבוהה לתקלות (Fault Tolerance) ויכולת ריפוי עצמי (Self-Healing).
+The system is designed to meet the following high-scale requirements:
+* Support **100 million registered users**.
+* Support **10 million concurrent active players** (representing 5 million simultaneous active rooms).
+* Manage real-time, low-latency data flow with zero freezing or lag.
+* Ensure high fault tolerance and automated self-healing capabilities.
 
 ---
 
-## 2. חלוקת השרתים ומיקרו-שירותים (Docker Containers)
-כדי לתמוך ב-10 מיליון שחקנים במקביל ללא קריסה של הזיכרון או המעבד, המערכת מפורקת ל-5 סוגי קונטיינרים ושירותים נפרדים, המנוהלים על ידי פלטפורמת תזמור (Kubernetes או K3s):
+## 2. Microservices Breakdown (Docker Containers)
+To support 10 million concurrent players without memory or CPU exhaustion, the backend is decoupled into 5 specialized service types, orchestrated via Kubernetes or K3s:
 
-| סוג השירות (Container Type) | תפקיד ואחריות במערכת | מאפייני עומס וניהול זיכרון |
+| Container Type | Role & Responsibilities | Scaling & Memory Characteristics |
 | :--- | :--- | :--- |
-| **שרתי תקשורת (WS Gateways)** | שמירת חיבורי ה-WebSocket הפתוחים מול הלקוחות, קבלת פקודות כגון WQe2e5, ושידור מצב הלוח העדכני לשחקנים ולצופים (Viewers)[cite: 1]. | **שירותים חסרי מצב (Stateless לחלוטין).** מופעלים בעשרות או מאות עותקים מאחורי מנתב עומסים (Load Balancer). |
-| **שרתי התאמת שחקנים (Matchmakers)** | ניהול לחצן המשחק (Play): איתור שחקנים בטווח דירוג של 100 נקודות ELO לכל כיוון, המתנה של עד דקה, יצירת מזהה חדר חדש (Room ID) והקצאת המשחק[cite: 1]. | שירותים קלילים ומהירים הדוגמים תורים מתוך זיכרון המטמון. מופעלים במספר עותקים מצומצם. |
-| **שרתי לוגיקת משחק (Logic Servers)** | ניהול חוקיות המהלכים, בדיקת זמני השהייה של הכלים (Cooldowns), ניהול ספירת 20 שניות אחורה לניתוק (Auto-Resign), וקביעת ניצחון או הפסד[cite: 1]. | שומרים את המצב הלוגי של החדר בזיכרון בלבד. מופעלים באלפי עותקים במקביל, כאשר כל קונטיינר מנהל אלפי חדרים בודדים. |
-| **עובדי רקע (Background Workers)** | קבלת אירועי סיום משחק, עדכון ניקוד ה-ELO במסד הנתונים הראשי, ושמירת קובצי הלוג של המשחק לארכיון[cite: 1]. | פועלים בצורה א-סינכרונית ברקע כדי לא לעכב את שרתי הלוגיקה והתקשורת. |
-| **שרתי זיכרון מהיר (Redis Cluster)** | **שכבת התשתית המרכזית:** מחזיקים בזיכרון ה-RAM את מצב החדרים, מנהלים את תורי השידוכים ומשמשים כתשתית להעברת אירועים (Pub/Sub Bus)[cite: 1]. | שרתים ייעודיים ועתירי זיכרון (RAM) הרצים בנפרד משרתי הלוגיקה והתקשורת. |
+| **WS Gateways (Communication)** | Maintain open WebSocket connections with clients, receive commands (e.g., `WQe2e5`), and broadcast live board states to players and viewers[cite: 1]. | **100% Stateless.** Deployed in dozens/hundreds of replicas behind a Load Balancer. |
+| **Matchmakers** | Manage the "Play" button: match players within a $\pm 100$ ELO range, wait up to 1 minute, generate a new Room ID, and assign game sessions[cite: 1]. | Lightweight and fast services polling queues from cache. Deployed in a small number of replicas. |
+| **Logic Servers** | Validate move legality, enforce piece cooldowns, manage the 20-second auto-resign disconnection countdown, and determine game outcomes[cite: 1]. | Hold logical room state strictly in memory. Deployed in thousands of concurrent replicas, each managing several thousand rooms. |
+| **Background Workers** | Process game-end events, update ELO ratings in the persistent database, and archive game logs[cite: 1]. | Operate asynchronously in the background to avoid blocking critical real-time game logic. |
+| **Redis Cluster (In-Memory)** | **Core Infrastructure Layer:** Hold active room states in RAM, manage matchmaking queues, and act as the Pub/Sub message broker[cite: 1]. | Dedicated, RAM-heavy nodes running completely independent of logic and gateway services. |
 
 ---
 
-## 3. ניהול נתונים עבור 100 מיליון משתמשים (Polyglot Persistence)
-השימוש במסד הנתונים המקומי SQLite אינו מתאים לקנה מידה של 100 מיליון משתמשים, מאחר שהוא מבוסס על קובץ בודד ויוצר נעילות כתיבה (Concurrency Bottlenecks) המונעות ביזור אופקי (Horizontal Scaling).
+## 3. Data Management for 100M Users (Polyglot Persistence)
+Using a local SQLite database is unfeasible for 100 million users due to file-level locking, concurrency bottlenecks, and the inability to scale horizontally across multiple nodes.
 
-במקום זאת, הארכיטקטורה משתמשת בשילוב של שני מסדי נתונים:
-1. **מסד נתונים ראשי (PostgreSQL או MongoDB):** שומר את המידע הסטטי והקבוע: משתמשים רשומים, סיסמאות מגובות, היסטוריית לוגים ומדד ELO קבוע[cite: 1]. המסד מוגדר בתצורת ביזור (Sharding) ושכפולי גיבוי (Replication).
-2. **זיכרון מטמון מהיר (Redis In-Memory Cluster):** מנהל את הסשנים הפעילים, רשימת החדרים החיים (Rooms) והתורים לשידוך משחקים מהיר. הגישה לזיכרון זה מהירה פי כמה אלפים מגישה לדיסק, ומונעת עומס על מסד הנתונים הראשי.
-
----
-
-## 4. תקשורת בין שרתים וניהול חדרים (Pub/Sub Bus)
-כדי לאפשר לשחקנים המחוברים לשרתי תקשורת שונים לשחק יחד וליצור חדרים פנויים לכולם ("כולם יכולים לשחק עם כולם"), המערכת מבוססת על ערוץ הפצה מרכזי (Pub/Sub Bus מבוסס Redis או Kafka)[cite: 1]:
-
-* **מיקום ה-Redis בארכיטקטורה (Middle Tier):** ה-Redis אינו יושב בתוך הקונטיינרים של שרתי הלוגיקה או התקשורת, אלא מהווה **שכבת תשתית וזיכרון מרכזית ונפרדת לגמרי**. כל שרתי ה-Gateway וכל שרתי הלוגיקה מתחברים אל קלאסטר ה-Redis המרכזי דרך הרשת הפנימית המהירה של הענן. הפרדה זו מבטיחה שכל אלפי השרתים רואים את אותה תמונת מצב אחידה בזמן אמת, ושאם קונטיינר לוגיקה קורס – המידע שבזיכרון ה-Redis נשמר ואינו נפגע.
-* **ערוצים ייעודיים לכל חדר:** כל חדר משחק מקבל ערוץ תקשורת משלו ב-Bus[cite: 1].
-* **זרימת מידע דו-כיוונית:**
-  * כאשר שחקן שולח מסע, שרת התקשורת (Gateway) מפרסם (Publish) את ההודעה לערוץ של החדר ב-Bus[cite: 1].
-  * שרת הלוגיקה המנהל את החדר, יחד עם שרתי התקשורת המחוברים ליריב ולצופים, מנויים (Subscribe) לערוץ זה[cite: 1].
-  * עדכוני ניקוד, לוגים של מהלכים, הפעלת סאונד ואנימציות התחלה וסיום מועברים כולם דרך ערוץ ה-Bus ומגיעים מיד לכל הלקוחות הרלוונטיים[cite: 1].
+Instead, the architecture implements a dual-database approach:
+1. **Persistent Database (PostgreSQL / MongoDB):** Stores static and long-term records: registered user profiles, hashed passwords, historical game logs, and permanent ELO ratings[cite: 1]. Configured with Sharding and Primary-Replica replication for high performance and redundancy.
+2. **High-Speed In-Memory Cache (Redis Cluster):** Manages active user sessions, live room states, and matchmaking queues. RAM access is orders of magnitude faster than disk access, preventing bottlenecks and offloading read/write pressure from the primary database.
 
 ---
 
-## 5. ניתוח נפח תעבורת רשת (Network Bandwidth Analysis)
-החישוב מתבסס על 10 מיליון שחקנים פעילים, המהווים 5 מיליון חדרים המכילים שחקן לבן ושחקן שחור[cite: 1]:
-* **קצב פקודות:** כל שחקן מבצע צעד בממוצע כל 2 שניות, כלומר קצב של 0.5 פקודות בשנייה לשחקן.
-* **סך הודעות נכנסות:** 10,000,000 שחקנים כפול 0.5 יוצר קצב של 5,000,000 הודעות נכנסות בשנייה.
-* **סך הודעות יוצאות (מינימלי):** כל מסע משודר לפחות ליריב, כלומר קצב של 5,000,000 הודעות יוצאות בשנייה.
-* **סך הכל תעבורת הודעות:** 10,000,000 הודעות בשנייה (ללא חישוב צופים בחדר).
+## 4. Inter-Server Communication & Room Management (Pub/Sub Bus)
+To ensure players connected to different Gateway instances can play together seamlessly and join any room ("everyone can play with everyone"), the backend utilizes a centralized message broker (**Pub/Sub Bus** via Redis Pub/Sub or Apache Kafka)[cite: 1]:
 
-**חישוב נפח נתונים:**
-בהנחה שכל הודעת WebSocket שוקלת כ-250 בתים (Bytes):
-* **נפח נתונים בשנייה:** 10,000,000 כפול 250 בתים = 2,500,000,000 בתים בשנייה (כ-2.5 גיגה-בייט בשנייה).
-* **רוחב פס נדרש:** במונחי תקשורת רשת מדובר על רוחב פס של כ-20 Gbps (גיגה-ביט בשנייה).
-
-**הערכת העומס:** עבור שרת בודד או רשת ביתית זהו עומס בלתי אפשרי, אך **עבור תשתית ענן מבוזרת מדובר בנפח תעבורה סביר וסטנדרטי לחלוטין.** פריסה של 100 שרתי תקשורת מאחורי מנתבי עומסים מחלקת את התעבורה לכ-200 עד 400 מגה-ביט בשנייה לכל קונטיינר, עומס קליל שכל שרת מודרני מנהל ללא קשיים.
+* **Middle-Tier Architecture:** Redis does not reside inside Gateway or Logic containers; it serves as an independent, centralized middle-tier data layer. All Gateways and Logic servers communicate with the Redis Cluster over the cloud provider's high-speed internal network. This ensures all instances share an identical, real-time state, preventing data loss if a logic container crashes.
+* **Dedicated Room Channels:** Every active game room is assigned a dedicated Pub/Sub channel[cite: 1].
+* **Bidirectional Event Flow:**
+  * When a player submits a move, the assigned WS Gateway publishes the event to the room's Pub/Sub channel[cite: 1].
+  * The assigned Logic Server, along with Gateways handling the opponent and any spectators (viewers), subscribe to this channel[cite: 1].
+  * Score updates, move logs, audio triggers, and start/end animations are routed through this bus, reaching all relevant clients instantly[cite: 1].
 
 ---
 
-## 6. התאמת הקונטיינרים לאופי משחק קצר (30 עד 90 שניות)
-משחק קצר יוצר תחלופה מהירה מאוד של חדרים (כ-100,000 חדרים שנפתחים ונסגרים בכל שנייה). הארכיטקטורה מותאמת לכך באמצעות:
-* **שרתי תקשורת חסרי מצב (Stateless Gateways):** שרתי התקשורת לא שומרים מידע על הלוח. כשמשחק מסתיים, השרת פשוט מבטל את המינוי מהערוץ ומפנה זיכרון מיד[cite: 1].
-* **שחרור זיכרון ועיבוד א-סינכרוני:** שרת הלוגיקה מסיים את המשחק, מפיץ הודעת סיום לערוץ ומתפנה מיד לנהל חדר חדש[cite: 1]. שמירת הלוגים וחישוב ה-ELO מבוצעים ברקע על ידי עובדי הרקע[cite: 1].
-* **התאמת משאבים דינמית (Auto-Scaling):** קוברנטיס מזהה זינוק או צניחה בכמות החדרים ומעלים או מכבים קונטיינרים של לוגיקה ותקשורת תוך שניות, מה שמונע בזבוז משאבים וחוסך בעלויות ענן.
+## 5. Network Bandwidth Analysis
+Calculations are based on 10 million concurrent players, representing 5 million active rooms consisting of White and Black players[cite: 1]:
+* **Input Command Rate:** A player makes a move on average every 2 seconds, generating 0.5 commands/sec per player.
+* **Total Inbound Traffic:** 10,000,000 players $\times$ 0.5 = 5,000,000 messages/sec.
+* **Total Outbound Traffic (Minimum):** Every move is broadcast to at least the opponent = 5,000,000 messages/sec.
+* **Total Message Throughput:** 10,000,000 messages/sec (excluding spectators).
+
+**Volume Calculation:**
+Assuming an average WebSocket payload (including headers) of 250 Bytes:
+* **Data Volume:** 10,000,000 msgs/sec $\times$ 250 Bytes = 2,500,000,000 Bytes/sec ($\approx 2.5$ GB/sec).
+* **Required Bandwidth:** In networking terms, this equals approximately **20 Gbps** (Gigabits per second).
+
+**Load Evaluation:** While 20 Gbps would overwhelm a single physical server, **it is a standard, manageable volume for distributed cloud infrastructure.** Distributing this traffic across 100 WS Gateway containers behind Cloud Load Balancers reduces the load to a lightweight 200–400 Mbps per container, which modern servers handle effortlessly.
 
 ---
 
-## 7. עמידות לתקלות וניהול מקרי קיצון (Fault Tolerance & Edge Cases)
+## 6. Adapting to Short Game Durations (30–90 Seconds)
+Short game sessions result in an extremely high churn rate (approx. 100,000 rooms created and destroyed every second). The architecture accommodates this through:
+* **Stateless Gateways:** Gateways retain no game rules or board memory. Upon game completion, the Gateway simply unsubscribes from the room's channel and immediately frees up system memory[cite: 1].
+* **Asynchronous Cleanup:** When a game ends, the Logic Server emits a `GameEnd` event to the bus and immediately becomes available to host a new room[cite: 1]. Heavy DB writes (ELO calculations and log archiving) are offloaded entirely to Background Workers[cite: 1].
+* **Dynamic Auto-Scaling:** Kubernetes monitors traffic spikes and drops, automatically spinning Gateway and Logic pods up or down within seconds to optimize resource usage and reduce cloud hosting costs.
 
-### א. מה קורה כאשר אחד השרתים (הקונטיינרים) נופל?
-* **ריפוי עצמי (Self-Healing):** פלטפורמת ה-Kubernetes מזהה קונטיינר שקרס ומקימה קונטיינר חדש במקומו תוך שניות בודדות.
-* **המשכיות רציפה:** מאחר ששרתי התקשורת הם חסרי מצב, שחקן שהתנתק מועבר אוטומטית לשרת תקשורת אחר, מושך את המצב המגובה מ-Redis וממשיך במשחק מאותה נקודה ללא הפרעה.
+---
 
-### ב. מה קורה כאשר בסיס הנתונים נופל?
-* **רפליקציה וגיבוי אוטומטי (Failover):** מסד הנתונים הראשי מוגדר בתצורת שרת ראשי ושרת גיבוי. כל כתיבה מגובת בזמן אמת לשרת העותק. אם הראשי קורס, שרת הגיבוי הופך באופן מיידי לשרת הראשי.
-* **עמידות זמנית באמצעות זיכרון מטמון:** במקרה של ניתוק קצר, אירועי ה-Bus וזיכרון ה-Redis שומרים את הנתונים במטמון ומסנכרנים אותם מול מסד הנתונים ברגע שהוא חוזר לאוויר.
+## 7. Fault Tolerance & Edge Cases
 
-### ג. מה קורה כאשר נגמר המקום בדיסק?
-* **אחסון ענן חיצוני (Object Storage):** הקונטיינרים בענן לא שומרים לוגים על הדיסק המקומי שלהם. כל לוגי הפעילות[cite: 1] נשלחים ישירות לשירות אחסון ענן בעל נפח בלתי מוגבל (כגון AWS S3).
-* **מדיניות שמירה וניקוי (Log Rotation & Retention):** מוגדר תהליך אוטומטי המוחק או דוחס לארכיון קובצי לוג של משחקים ישנים (למשל, כאלו שהסתיימו לפני יותר מ-30 יום).
-* **ניטור והתראות מוקדמות:** כלי בקרה מתריעים לצוות הפיתוח כאשר קיבולת הדיסק בשרתי בסיס הנתונים מגיעה ל-75 אחוזים, מה שמאפשר הרחבת דיסק יזומה ללא השבתת המערכת.
+### A. What happens if a server (container) crashes?
+* **Automated Self-Healing:** The Kubernetes control plane detects unresponsive pods (Gateways or Logic servers) and immediately terminates and replaces them with healthy instances within seconds.
+* **Seamless Continuity:** Because WS Gateways are completely stateless, a disconnected client is instantly routed to a healthy Gateway by the Load Balancer. The new Gateway fetches the current board state from Redis, allowing the user to resume playing with zero perceived data loss.
+
+### B. What happens if the database crashes?
+* **Automated Failover & Replication:** The primary database (PostgreSQL/MongoDB) runs in a High-Availability (HA) Primary-Replica configuration. All writes are replicated in real-time. If the Primary node fails, the Replica is automatically promoted to Primary with minimal downtime.
+* **Cache Buffer Resilience:** During brief DB failover windows, active game sessions continue running smoothly because live states are read and written directly to the Redis cache cluster. Data is synchronized back to the persistent DB once it recovers.
+
+### C. What happens if disk space runs out?
+* **Decoupled Cloud Object Storage:** Containers do not store logs locally. All client and server activity logs[cite: 1] are streamed directly to external, scalable object storage (e.g., AWS S3 or Google Cloud Storage), which provides virtually limitless capacity.
+* **Log Rotation & Retention Policies:** Automated lifecycle policies compress and archive old game logs, automatically deleting records older than 30 days.
+* **Proactive Monitoring & Alerts:** Infrastructure monitoring tools (Prometheus & Grafana) trigger automated alerts to the engineering team when database disk volumes reach 75% capacity, allowing for proactive volume expansion before storage is exhausted.
