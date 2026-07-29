@@ -2,21 +2,30 @@
 
 #include "model/piece.hpp"
 
-struct EloResult
+// Represents all possible game outcomes
+enum class GameResult
 {
-    int whiteRating;
-    int blackRating;
+    WHITE_WIN,
+    BLACK_WIN,
+    DRAW
 };
 
-class EloService
+// Holds the updated ratings after calculation
+struct EloResult
 {
-private:
-    static constexpr int K_FACTOR = 32;
+    int whiteRating = 0;
+    int blackRating = 0;
+};
 
-public:
+namespace EloService
+{
+    // K-factor determines how drastically a rating can change in a single game
+    inline constexpr int K_FACTOR = 32;
+
+    // Calculates new ELO ratings based on current ratings and game outcome
     EloResult calculateRatings(
         int whiteRating,
         int blackRating,
-        Color winnerColor
-    ) const;
-};
+        GameResult result
+    );
+}

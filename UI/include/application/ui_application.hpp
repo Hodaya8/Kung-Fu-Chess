@@ -45,6 +45,9 @@ private:
     std::optional<ServerGameState>
         latestServerState;
 
+    std::optional<int>
+        roomId;
+
     std::optional<Color>
         playerColor;
 
@@ -65,6 +68,8 @@ private:
     void handleMouseClick(
         const MouseClick& click
     );
+
+    void sendFindMatchRequest();
 
     void sendMoveRequest(
         Position source,

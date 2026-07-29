@@ -1,27 +1,46 @@
-#ifndef EVENT_BUS_HPP
-#define EVENT_BUS_HPP
+#pragma once
 
 #include <functional>
 #include <utility>
 #include <vector>
 
+// Template class allows this bus to handle any event type
 template<typename Event>
-class EventBus {
+class EventBus
+{
 private:
+    // Alias for a callback function that takes a const reference to an Event
     using EventHandler = std::function<void(const Event&)>;
 
+    // List of all registered callback functions waiting for this event
     std::vector<EventHandler> subscribers;
 
 public:
-    void subscribe(EventHandler handler) {
+    // Default constructor
+    EventBus() = default;
+
+    // Prevent copying the event bus to avoid duplicating subscriber lists in memory
+    EventBus(const EventBus&) = delete;
+    EventBus& operator=(const EventBus&) = delete;
+
+    // Registers a new subscriber function to listen for events
+    void subscribe(EventHandler handler)
+    {
         subscribers.push_back(std::move(handler));
     }
 
-    void publish(const Event& event) const {
-        for (const auto& handler : subscribers) {
+    // Sends the event to all registered subscribers immediately
+    void publish(const Event& event) const
+    {
+        for (const auto& handler : subscribers)
+        {
             handler(event);
         }
     }
-};
 
-#endif // EVENT_BUS_HPP
+    // Removes all subscribers
+    void clear()
+    {
+        subscribers.clear();
+    }
+};

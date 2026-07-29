@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 #include <nlohmann/json.hpp>
@@ -123,7 +124,9 @@ int UiApplication::run()
 
         return 0;
     }
-    catch (const std::exception& exception)
+    catch (
+        const std::exception&
+            exception)
     {
         cv::destroyAllWindows();
 
@@ -201,6 +204,8 @@ void UiApplication::handleServerMessage(
                 << rating
                 << std::endl;
 
+            sendFindMatchRequest();
+
             return;
         }
 
@@ -215,8 +220,21 @@ void UiApplication::handleServerMessage(
             return;
         }
 
-        if (messageType == "PlayerAssigned")
+        if (messageType == "WaitingForMatch")
         {
+            std::cout
+                << "[UI] Waiting for a matching player..."
+                << std::endl;
+
+            return;
+        }
+
+        if (messageType == "MatchFound")
+        {
+            const int assignedRoomId =
+                json.at("roomId")
+                    .get<int>();
+
             const std::string side =
                 json.at("side")
                     .get<std::string>();
@@ -244,24 +262,18 @@ void UiApplication::handleServerMessage(
                 std::lock_guard<std::mutex>
                     lock(serverStateMutex);
 
+                roomId =
+                    assignedRoomId;
+
                 playerColor =
                     assignedColor;
             }
 
             std::cout
-                << "[UI] Assigned side: "
+                << "[UI] Match found. Room: "
+                << assignedRoomId
+                << ", side: "
                 << side
-                << std::endl;
-
-            return;
-        }
-
-        if (messageType == "ConnectionRejected")
-        {
-            std::cerr
-                << "[UI] Connection rejected: "
-                << json.at("reason")
-                       .get<std::string>()
                 << std::endl;
 
             return;
@@ -288,7 +300,9 @@ void UiApplication::handleServerMessage(
             return;
         }
     }
-    catch (const std::exception& exception)
+    catch (
+        const std::exception&
+            exception)
     {
         std::cerr
             << "[UI] Invalid server message: "
@@ -317,8 +331,10 @@ void UiApplication::handleMouseClick(
             playerColor;
     }
 
-    if (!currentState.has_value() ||
-        !currentPlayerColor.has_value())
+    if (
+        !currentState.has_value() ||
+        !currentPlayerColor.has_value()
+    )
     {
         return;
     }
@@ -328,8 +344,10 @@ void UiApplication::handleMouseClick(
         return;
     }
 
-    if (click.button ==
-        MouseButton::Left)
+    if (
+        click.button ==
+        MouseButton::Left
+    )
     {
         controller.handleLeftClick(
             click.x,
@@ -346,6 +364,21 @@ void UiApplication::handleMouseClick(
             currentState->snapshot,
             currentPlayerColor.value()
         );
+    }
+}
+
+void UiApplication::sendFindMatchRequest()
+{
+    const std::string message =
+        ClientProtocol::
+            createFindMatchRequestMessage();
+
+    if (webSocketClient.send(
+            message))
+    {
+        std::cout
+            << "[UI] Match request sent."
+            << std::endl;
     }
 }
 

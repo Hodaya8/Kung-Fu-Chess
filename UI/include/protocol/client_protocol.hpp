@@ -11,6 +11,8 @@ namespace ClientProtocol
         const std::string& password
     );
 
+    std::string createFindMatchRequestMessage();
+
     std::string createMoveRequestMessage(
         const Position& source,
         const Position& destination

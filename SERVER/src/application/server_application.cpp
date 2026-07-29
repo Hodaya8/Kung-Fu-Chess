@@ -1,4 +1,4 @@
-#include "application/server_application.hpp"
+﻿#include "application/server_application.hpp"
 
 #include <exception>
 #include <iostream>
@@ -9,848 +9,499 @@
 
 namespace
 {
-    std::string authFailureReason(
-        AuthStatus status)
+    //Converts internal authentication enum errors to readable protocol strings
+    std::string authFailureReason(AuthStatus status)
     {
         switch (status)
         {
             case AuthStatus::InvalidPassword:
                 return "InvalidPassword";
-
             case AuthStatus::InvalidInput:
                 return "InvalidInput";
-
             case AuthStatus::DatabaseError:
                 return "DatabaseError";
-
             case AuthStatus::Authenticated:
             case AuthStatus::Registered:
                 return "Unknown";
         }
-
         return "Unknown";
     }
 }
 
-KungFuChessServerApplication::
-KungFuChessServerApplication(
-    int port,
-    const std::string& databasePath)
+//constructor
+KungFuChessServerApplication::KungFuChessServerApplication(int port, const std::string& databasePath)
     : port(port),
       databaseManager(databasePath),
       userRepository(databaseManager),
       authService(userRepository)
 {
-    pieceRemovedBus.subscribe(
-        [this](
-            const PieceRemovedInfo&
-                removedPiece)
+    // Wire up internal event buses using lambdas
+    findMatchRequestedBus.subscribe(
+        [this](const FindMatchRequestedEvent& event)
         {
-            scoreService.handlePieceRemoved(
-                removedPiece
-            );
+            handleFindMatchRequested(event);
         }
     );
 
-    gameEndedBus.subscribe(
-        [this](
-            const Color& winnerColor)
+    matchFoundBus.subscribe(
+        [this](const MatchResult& match)
         {
-            handleGameEnded(
-                winnerColor
-            );
+            handleMatchFound(match);
         }
     );
 }
 
-void KungFuChessServerApplication::
-configureServer()
+void KungFuChessServerApplication::configureServer()
 {
-    server.clear_access_channels(
-        websocketpp::log::alevel::all
-    );
-
+    // Silence verbose console logging from websocketpp
+    server.clear_access_channels(websocketpp::log::alevel::all);
     server.init_asio();
     server.set_reuse_addr(true);
 
-    server.set_open_handler(
-        [this](
-            ConnectionHandle connection)
-        {
-            onOpen(
-                connection
-            );
-        }
-    );
-
-    server.set_close_handler(
-        [this](
-            ConnectionHandle connection)
-        {
-            onClose(
-                connection
-            );
-        }
-    );
-
-    server.set_message_handler(
-        [this](
-            ConnectionHandle connection,
-            Server::message_ptr message)
-        {
-            onMessage(
-                connection,
-                message
-            );
-        }
-    );
+    // Bind network lifecycle events to our class methods
+    server.set_open_handler([this](ConnectionHandle hdl) { onOpen(hdl); });
+    server.set_close_handler([this](ConnectionHandle hdl) { onClose(hdl); });
+    server.set_message_handler([this](ConnectionHandle hdl, Server::message_ptr msg) { onMessage(hdl, msg); });
 }
 
 int KungFuChessServerApplication::run()
 {
     try
     {
-        if (!databaseManager.init())
+        // 1. Initialize SQLite Database
+        if (!databaseManager.init() || !userRepository.createTable())
         {
+            std::cerr << "[SERVER ERROR] Failed to initialize database." << std::endl;
             return 1;
         }
 
-        if (!userRepository.createTable())
-        {
-            return 1;
-        }
-
+        // 2. Configure and bind WebSocket server
         configureServer();
-
-        server.listen(
-            port
-        );
-
+        server.listen(port);
         server.start_accept();
 
+        // 3. Start the 20ms game engine clock
         scheduleGameTick();
 
-        std::cout
-            << "[SERVER] Listening on port "
-            << port
-            << std::endl;
+        std::cout << "[SERVER] KungFu Chess Server listening on port " << port << std::endl;
 
+        // 4. Block and run the asynchronous event loop
         server.run();
-
         return 0;
     }
-    catch (
-        const websocketpp::exception&
-            exception)
+    catch (const std::exception& exception)
     {
-        std::cerr
-            << "[SERVER ERROR] "
-            << exception.what()
-            << std::endl;
-
-        return 1;
-    }
-    catch (
-        const std::exception&
-            exception)
-    {
-        std::cerr
-            << "[SERVER ERROR] "
-            << exception.what()
-            << std::endl;
-
+        std::cerr << "[SERVER FATAL] " << exception.what() << std::endl;
         return 1;
     }
 }
 
-void KungFuChessServerApplication::onOpen(
-    ConnectionHandle connection)
+void KungFuChessServerApplication::onOpen(ConnectionHandle connection)
 {
-    clients.emplace(
-        connection,
-        ClientState{}
-    );
-
-    std::cout
-        << "[SERVER] Client connected. "
-        << "Waiting for login."
-        << std::endl;
+    // Register new connection with empty/unauthenticated client state
+    clients.emplace(connection, ClientState{});
+    std::cout << "[SERVER] New client connected. Waiting for authentication." << std::endl;
 }
 
-void KungFuChessServerApplication::onClose(
-    ConnectionHandle connection)
+void KungFuChessServerApplication::onClose(ConnectionHandle connection)
 {
-    const auto client =
-        clients.find(
-            connection
-        );
-
+    const auto client = clients.find(connection);
     if (client == clients.end())
     {
         return;
     }
 
-    const std::string username =
-        client->second.username;
+    const std::string username = client->second.username;
 
-    clients.erase(
-        client
-    );
-
-    std::cout
-        << "[SERVER] Client disconnected";
-
-    if (!username.empty())
+    // If player was queuing for a match, remove them immediately
+    if (client->second.loggedIn)
     {
-        std::cout
-            << ": "
-            << username;
+        roomManager.removeWaitingPlayer(client->second.userId);
     }
 
-    std::cout
-        << ". Active players: "
-        << loggedInPlayerCount()
-        << std::endl;
+    clients.erase(client);
+
+    std::cout << "[SERVER] Client disconnected" << (!username.empty() ? ": " + username : "") 
+              << ". Active logged-in users: " << loggedInPlayerCount() << std::endl;
 }
 
-void KungFuChessServerApplication::onMessage(
-    ConnectionHandle connection,
-    Server::message_ptr message)
+void KungFuChessServerApplication::onMessage(ConnectionHandle connection, Server::message_ptr message)
 {
     try
     {
-        const std::string payload =
-            message->get_payload();
+        const std::string payload = message->get_payload();
+        const std::string messageType = JsonProtocol::getMessageType(payload);
 
-        const std::string messageType =
-            JsonProtocol::getMessageType(
-                payload
-            );
-
+        // Route incoming network message to the appropriate handler
         if (messageType == "LoginRequest")
         {
-            handleLoginRequest(
-                connection,
-                payload
-            );
-
-            return;
+            handleLoginRequest(connection, payload);
         }
-
-        if (messageType == "MoveRequest")
+        else if (messageType == "FindMatchRequest")
         {
-            handleMoveRequest(
-                connection,
-                payload
-            );
-
-            return;
+            handleFindMatchRequest(connection);
         }
-
-        if (messageType == "JumpRequest")
+        else if (messageType == "MoveRequest")
         {
-            handleJumpRequest(
-                connection,
-                payload
-            );
-
-            return;
+            handleMoveRequest(connection, payload);
         }
-
-        throw std::invalid_argument(
-            "Unknown message type."
-        );
+        else if (messageType == "JumpRequest")
+        {
+            handleJumpRequest(connection, payload);
+        }
+        else
+        {
+            throw std::invalid_argument("Unknown messageType: " + messageType);
+        }
     }
-    catch (
-        const std::exception&
-            exception)
+    catch (const std::exception& exception)
     {
-        std::cerr
-            << "[SERVER] Invalid request: "
-            << exception.what()
-            << std::endl;
+        std::cerr << "[SERVER WARN] Malformed client message: " << exception.what() << std::endl;
     }
 }
 
-void KungFuChessServerApplication::
-handleLoginRequest(
-    ConnectionHandle connection,
-    const std::string& message)
+void KungFuChessServerApplication::handleLoginRequest(ConnectionHandle connection, const std::string& message)
 {
-    const auto client =
-        clients.find(
-            connection
-        );
-
+    const auto client = clients.find(connection);
     if (client == clients.end())
     {
         return;
     }
 
-    ClientState& clientState =
-        client->second;
+    ClientState& clientState = client->second;
 
     if (clientState.loggedIn)
     {
-        sendLoginRejected(
-            connection,
-            "AlreadyLoggedIn"
-        );
-
+        sendLoginRejected(connection, "AlreadyLoggedIn");
         return;
     }
 
-    const JsonProtocol::LoginRequest request =
-        JsonProtocol::parseLoginRequest(
-            message
-        );
+    const JsonProtocol::LoginRequest request = JsonProtocol::parseLoginRequest(message);
 
-    if (loggedInPlayerCount() >= 2)
+    // Prevent double logins from the same account
+    if (isUsernameConnected(request.username))
     {
-        closeFullConnection(
-            connection
-        );
-
+        sendLoginRejected(connection, "AlreadyConnected");
         return;
     }
 
-    if (isUsernameConnected(
-            request.username))
-    {
-        sendLoginRejected(
-            connection,
-            "AlreadyConnected"
-        );
-
-        return;
-    }
-
-    const AuthResult authResult =
-        authService.loginOrRegister(
-            request.username,
-            request.password
-        );
+    const AuthResult authResult = authService.loginOrRegister(request.username, request.password);
 
     if (!authResult.isSuccess())
     {
-        sendLoginRejected(
-            connection,
-            authFailureReason(
-                authResult.status
-            )
-        );
-
+        sendLoginRejected(connection, authFailureReason(authResult.status));
         return;
     }
 
-    const Color assignedColor =
-        isSideAssigned(Color::WHITE)
-            ? Color::BLACK
-            : Color::WHITE;
+    // Populate session state
+    clientState.userId = authResult.user.id;
+    clientState.username = authResult.user.username;
+    clientState.rating = authResult.user.rating;
+    clientState.roomId.reset();
+    clientState.playerColor.reset();
+    clientState.loggedIn = true;
 
-    clientState.userId =
-        authResult.user.id;
-
-    clientState.username =
-        authResult.user.username;
-
-    clientState.rating =
-        authResult.user.rating;
-
-    clientState.playerColor =
-        assignedColor;
-
-    clientState.loggedIn =
-        true;
-
-    const bool registered =
-        authResult.status ==
-        AuthStatus::Registered;
+    const bool registered = (authResult.status == AuthStatus::Registered);
 
     sendTextMessage(
         connection,
-        JsonProtocol::
-            createLoginAcceptedMessage(
-                clientState.username,
-                clientState.rating,
-                registered
-            )
+        JsonProtocol::createLoginAcceptedMessage(clientState.username, clientState.rating, registered)
     );
 
-    sendTextMessage(
-        connection,
-        JsonProtocol::
-            createPlayerAssignedMessage(
-                assignedColor
-            )
-    );
-
-    std::cout
-        << "[SERVER] User "
-        << (
-            registered
-                ? "registered"
-                : "authenticated"
-        )
-        << ": "
-        << clientState.username
-        << ", rating "
-        << clientState.rating
-        << ", side "
-        << (
-            assignedColor == Color::WHITE
-                ? "white"
-                : "black"
-        )
-        << std::endl;
-
-    broadcastGameState();
+    std::cout << "[AUTH] User " << (registered ? "registered" : "logged in") 
+              << ": " << clientState.username << " (ELO: " << clientState.rating << ")" << std::endl;
 }
 
-void KungFuChessServerApplication::
-handleMoveRequest(
-    ConnectionHandle connection,
-    const std::string& message)
+void KungFuChessServerApplication::handleFindMatchRequest(ConnectionHandle connection)
 {
-    const auto client =
-        clients.find(
-            connection
-        );
-
+    const auto client = clients.find(connection);
     if (client == clients.end())
     {
         return;
     }
 
-    const ClientState& clientState =
-        client->second;
+    const ClientState& clientState = client->second;
 
-    if (
-        !clientState.loggedIn ||
-        !clientState.playerColor.has_value()
-    )
+    // Ignore if unauthenticated or already playing in a room
+    if (!clientState.loggedIn || clientState.isInRoom())
     {
         return;
     }
 
-    const JsonProtocol::MoveRequest request =
-        JsonProtocol::parseMoveRequest(
-            message
-        );
+    if (roomManager.isWaiting(clientState.userId))
+    {
+        sendTextMessage(connection, JsonProtocol::createWaitingForMatchMessage());
+        return;
+    }
 
-    game.requestMove(
-        clientState.playerColor.value(),
-        request.source,
-        request.destination
-    );
-
-    std::cout
-        << "[SERVER] Move request: ("
-        << request.source.getRow()
-        << ", "
-        << request.source.getCol()
-        << ") -> ("
-        << request.destination.getRow()
-        << ", "
-        << request.destination.getCol()
-        << ")"
-        << std::endl;
-
-    broadcastGameState();
+    // Publish async matchmaking request
+    findMatchRequestedBus.publish({clientState.userId, clientState.rating});
 }
 
-void KungFuChessServerApplication::
-handleJumpRequest(
-    ConnectionHandle connection,
-    const std::string& message)
+void KungFuChessServerApplication::handleFindMatchRequested(const FindMatchRequestedEvent& event)
 {
-    const auto client =
-        clients.find(
-            connection
-        );
+    // Attempt to match with existing waiting players (+-100 ELO)
+    const auto match = roomManager.addWaitingPlayer(event.userId, event.rating);
 
+    if (match.has_value())
+    {
+        matchFoundBus.publish(match.value());
+        return;
+    }
+
+    const auto client = findClientByUserId(event.userId);
     if (client == clients.end())
     {
         return;
     }
 
-    const ClientState& clientState =
-        client->second;
+    sendTextMessage(client->first, JsonProtocol::createWaitingForMatchMessage());
+    std::cout << "[MATCHMAKING] " << client->second.username << " queued. Rating: " << client->second.rating << std::endl;
+}
 
-    if (
-        !clientState.loggedIn ||
-        !clientState.playerColor.has_value()
-    )
+void KungFuChessServerApplication::handleMatchFound(const MatchResult& match)
+{
+    const auto firstClient = findClientByUserId(match.firstUserId);
+    const auto secondClient = findClientByUserId(match.secondUserId);
+
+    if (firstClient == clients.end() || secondClient == clients.end())
     {
         return;
     }
 
-    const JsonProtocol::JumpRequest request =
-        JsonProtocol::parseJumpRequest(
-            message
-        );
+    // Security check: Verify both players are available
+    if (!firstClient->second.loggedIn || !secondClient->second.loggedIn ||
+        firstClient->second.isInRoom() || secondClient->second.isInRoom())
+    {
+        return;
+    }
 
-    game.requestJump(
-        clientState.playerColor.value(),
-        request.cell
+    // Create a new isolated game room
+    GameRoom& room = roomManager.createRoom();
+    const int roomId = room.getId();
+
+    // Listen for game-over event in this room
+    room.subscribeToGameEnded(
+        [this, roomId](const Color& winnerColor)
+        {
+            handleGameEnded(roomId, winnerColor);
+        }
     );
 
-    std::cout
-        << "[SERVER] Jump request: ("
-        << request.cell.getRow()
-        << ", "
-        << request.cell.getCol()
-        << ")"
-        << std::endl;
+    // Assign colors and update client states
+    firstClient->second.roomId = roomId;
+    firstClient->second.playerColor = Color::WHITE;
 
-    broadcastGameState();
+    secondClient->second.roomId = roomId;
+    secondClient->second.playerColor = Color::BLACK;
+
+    sendTextMessage(firstClient->first, JsonProtocol::createMatchFoundMessage(roomId, Color::WHITE));
+    sendTextMessage(secondClient->first, JsonProtocol::createMatchFoundMessage(roomId, Color::BLACK));
+
+    std::cout << "[ROOM " << roomId << "] Created match: " << firstClient->second.username 
+              << " (White) vs " << secondClient->second.username << " (Black)" << std::endl;
+
+    broadcastGameState(roomId);
 }
 
-void KungFuChessServerApplication::
-handleGameEnded(
-    Color winnerColor)
+void KungFuChessServerApplication::handleMoveRequest(ConnectionHandle connection, const std::string& message)
 {
-    ClientState* whitePlayer =
-        nullptr;
-
-    ClientState* blackPlayer =
-        nullptr;
-
-    for (auto& client :
-         clients)
+    const auto client = clients.find(connection);
+    if (client == clients.end() || !client->second.isPlayer())
     {
-        ClientState& clientState =
-            client.second;
+        return;
+    }
 
-        if (
-            !clientState.loggedIn ||
-            !clientState.playerColor.has_value()
-        )
+    GameRoom* room = roomManager.findRoom(client->second.roomId.value());
+    if (!room)
+    {
+        return;
+    }
+
+    const JsonProtocol::MoveRequest request = JsonProtocol::parseMoveRequest(message);
+    room->requestMove(client->second.playerColor.value(), request.source, request.destination);
+    broadcastGameState(room->getId());
+}
+
+void KungFuChessServerApplication::handleJumpRequest(ConnectionHandle connection, const std::string& message)
+{
+    const auto client = clients.find(connection);
+    if (client == clients.end() || !client->second.isPlayer())
+    {
+        return;
+    }
+
+    GameRoom* room = roomManager.findRoom(client->second.roomId.value());
+    if (!room)
+    {
+        return;
+    }
+
+    const JsonProtocol::JumpRequest request = JsonProtocol::parseJumpRequest(message);
+    room->requestJump(client->second.playerColor.value(), request.cell);
+    broadcastGameState(room->getId());
+}
+
+void KungFuChessServerApplication::handleGameEnded(int roomId, Color winnerColor)
+{
+    ClientState* whitePlayer = nullptr;
+    ClientState* blackPlayer = nullptr;
+
+    // Locate the two participating players in the client map
+    for (auto& client : clients)
+    {
+        ClientState& clientState = client.second;
+        if (!clientState.isPlayer() || clientState.roomId.value() != roomId)
         {
             continue;
         }
 
-        if (
-            clientState.playerColor.value() ==
-            Color::WHITE
-        )
+        if (clientState.playerColor.value() == Color::WHITE)
         {
-            whitePlayer =
-                &clientState;
+            whitePlayer = &clientState;
         }
         else
         {
-            blackPlayer =
-                &clientState;
+            blackPlayer = &clientState;
         }
     }
 
-    if (
-        !whitePlayer ||
-        !blackPlayer
-    )
+    if (!whitePlayer || !blackPlayer)
     {
-        std::cerr
-            << "[ELO] Could not update ratings: "
-            << "both players must be connected."
-            << std::endl;
-
+        std::cerr << "[ROOM " << roomId << "] Error: Could not locate players to update ELO." << std::endl;
         return;
     }
 
-    const int previousWhiteRating =
-        whitePlayer->rating;
+    const int prevWhiteRating = whitePlayer->rating;
+    const int prevBlackRating = blackPlayer->rating;
 
-    const int previousBlackRating =
-        blackPlayer->rating;
+    // Calculate new ELO ratings mathematically
+    const EloResult newRatings = eloService.calculateRatings(prevWhiteRating, prevBlackRating, winnerColor);
 
-    const EloResult newRatings =
-        eloService.calculateRatings(
-            previousWhiteRating,
-            previousBlackRating,
-            winnerColor
-        );
+    // Persist new ratings to SQLite database
+    const bool whiteSaved = userRepository.updateRating(whitePlayer->userId, newRatings.whiteRating);
+    const bool blackSaved = userRepository.updateRating(blackPlayer->userId, newRatings.blackRating);
 
-    const bool whiteSaved =
-        userRepository.updateRating(
-            whitePlayer->userId,
-            newRatings.whiteRating
-        );
-
-    const bool blackSaved =
-        userRepository.updateRating(
-            blackPlayer->userId,
-            newRatings.blackRating
-        );
-
-    if (
-        !whiteSaved ||
-        !blackSaved
-    )
+    if (!whiteSaved || !blackSaved)
     {
-        std::cerr
-            << "[ELO] Could not save "
-            << "the new ratings."
-            << std::endl;
-
+        std::cerr << "[ROOM " << roomId << "] Error: Failed to save updated ELO to database." << std::endl;
         return;
     }
 
-    whitePlayer->rating =
-        newRatings.whiteRating;
+    whitePlayer->rating = newRatings.whiteRating;
+    blackPlayer->rating = newRatings.blackRating;
 
-    blackPlayer->rating =
-        newRatings.blackRating;
-
-    std::cout
-        << "[GAME END] Winner: "
-        << (
-            winnerColor == Color::WHITE
-                ? "white"
-                : "black"
-        )
-        << std::endl;
-
-    std::cout
-        << "[ELO] "
-        << whitePlayer->username
-        << ": "
-        << previousWhiteRating
-        << " -> "
-        << whitePlayer->rating
-        << std::endl;
-
-    std::cout
-        << "[ELO] "
-        << blackPlayer->username
-        << ": "
-        << previousBlackRating
-        << " -> "
-        << blackPlayer->rating
-        << std::endl;
+    std::cout << "[ROOM " << roomId << "] Game Ended. ELO Updates:\n"
+              << "  -> White (" << whitePlayer->username << "): " << prevWhiteRating << " -> " << whitePlayer->rating << "\n"
+              << "  -> Black (" << blackPlayer->username << "): " << prevBlackRating << " -> " << blackPlayer->rating << std::endl;
 }
 
-bool KungFuChessServerApplication::
-isSideAssigned(
-    Color playerColor) const
+KungFuChessServerApplication::ClientMap::iterator KungFuChessServerApplication::findClientByUserId(int userId)
 {
-    for (const auto& client :
-         clients)
+    for (auto it = clients.begin(); it != clients.end(); ++it)
     {
-        const ClientState& clientState =
-            client.second;
+        if (it->second.loggedIn && it->second.userId == userId)
+        {
+            return it;
+        }
+    }
+    return clients.end();
+}
 
-        if (
-            clientState.loggedIn &&
-            clientState.playerColor.has_value() &&
-            clientState.playerColor.value() ==
-                playerColor
-        )
+bool KungFuChessServerApplication::isUsernameConnected(const std::string& username) const
+{
+    for (const auto& client : clients)
+    {
+        if (client.second.loggedIn && client.second.username == username)
         {
             return true;
         }
     }
-
     return false;
 }
 
-bool KungFuChessServerApplication::
-isUsernameConnected(
-    const std::string& username) const
-{
-    for (const auto& client :
-         clients)
-    {
-        if (
-            client.second.loggedIn &&
-            client.second.username ==
-                username
-        )
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-std::size_t
-KungFuChessServerApplication::
-loggedInPlayerCount() const
+std::size_t KungFuChessServerApplication::loggedInPlayerCount() const
 {
     std::size_t count = 0;
-
-    for (const auto& client :
-         clients)
+    for (const auto& client : clients)
     {
         if (client.second.loggedIn)
         {
             ++count;
         }
     }
-
     return count;
 }
 
-void KungFuChessServerApplication::
-broadcastGameState()
+void KungFuChessServerApplication::broadcastGameState(int roomId)
 {
-    if (loggedInPlayerCount() == 0)
+    GameRoom* room = roomManager.findRoom(roomId);
+    if (!room)
     {
         return;
     }
 
-    const GameSnapshot snapshot =
-        game.getSnapshot();
+    const GameSnapshot snapshot = room->getSnapshot();
+    const std::string message = JsonProtocol::createGameStateMessage(
+        snapshot, room->isGameOver(), room->getWhiteScore(), room->getBlackScore()
+    );
 
-    const std::string message =
-        JsonProtocol::createGameStateMessage(
-            snapshot,
-            game.isGameOver(),
-            scoreService.getWhiteScore(),
-            scoreService.getBlackScore()
-        );
-
-    for (const auto& client :
-         clients)
+    // Broadcast snapshot to all players and spectators viewing this room
+    for (const auto& client : clients)
     {
-        if (!client.second.loggedIn)
+        const ClientState& clientState = client.second;
+        if (clientState.loggedIn && clientState.roomId.has_value() && clientState.roomId.value() == roomId)
         {
-            continue;
+            sendTextMessage(client.first, message);
         }
-
-        sendTextMessage(
-            client.first,
-            message
-        );
     }
 }
 
-void KungFuChessServerApplication::
-sendTextMessage(
-    ConnectionHandle connection,
-    const std::string& message)
+void KungFuChessServerApplication::sendTextMessage(ConnectionHandle connection, const std::string& message)
 {
-    websocketpp::lib::error_code
-        error;
-
-    server.send(
-        connection,
-        message,
-        websocketpp::frame::opcode::text,
-        error
-    );
+    websocketpp::lib::error_code error;
+    server.send(connection, message, websocketpp::frame::opcode::text, error);
 
     if (error)
     {
-        std::cerr
-            << "[SERVER] Failed to send message: "
-            << error.message()
-            << std::endl;
+        std::cerr << "[SERVER WARN] Send failed: " << error.message() << std::endl;
     }
 }
 
-void KungFuChessServerApplication::
-sendLoginRejected(
-    ConnectionHandle connection,
-    const std::string& reason)
+void KungFuChessServerApplication::sendLoginRejected(ConnectionHandle connection, const std::string& reason)
 {
-    sendTextMessage(
-        connection,
-        JsonProtocol::
-            createLoginRejectedMessage(
-                reason
-            )
-    );
+    sendTextMessage(connection, JsonProtocol::createLoginRejectedMessage(reason));
 }
 
-void KungFuChessServerApplication::
-closeFullConnection(
-    ConnectionHandle connection)
+void KungFuChessServerApplication::scheduleGameTick()
 {
-    sendTextMessage(
-        connection,
-        JsonProtocol::createGameFullMessage()
-    );
-
-    websocketpp::lib::error_code
-        error;
-
-    server.close(
-        connection,
-        websocketpp::close::status::normal,
-        "Game is full.",
-        error
-    );
-
-    if (error)
-    {
-        std::cerr
-            << "[SERVER] Failed to close "
-            << "full connection: "
-            << error.message()
-            << std::endl;
-    }
-}
-
-void KungFuChessServerApplication::
-scheduleGameTick()
-{
+    // Set an asynchronous timer to fire after GAME_TICK_MS (20 milliseconds)
     server.set_timer(
         GAME_TICK_MS,
-        [this](
-            const websocketpp::lib::error_code&
-                error)
+        [this](const websocketpp::lib::error_code& error)
         {
             if (error)
             {
                 return;
             }
 
-            const auto removedPieces =
-                game.advanceTime(
-                    GAME_TICK_MS
-                );
-
-            for (const auto& removedPiece :
-                 removedPieces)
-            {
-                pieceRemovedBus.publish(
-                    removedPiece
-                );
-            }
-
-            if (!removedPieces.empty())
-            {
-                std::cout
-                    << "[SCORE] White: "
-                    << scoreService.getWhiteScore()
-                    << " | Black: "
-                    << scoreService.getBlackScore()
-                    << std::endl;
-            }
-
-            if (
-                game.isGameOver() &&
-                !gameEndEventPublished
-            )
-            {
-                const auto winnerColor =
-                    game.getWinnerColor();
-
-                if (winnerColor.has_value())
+            // Advance time for all active game rooms
+            roomManager.forEachRoom(
+                [this](GameRoom& room)
                 {
-                    gameEndEventPublished =
-                        true;
+                    const auto removedPieces = room.advanceTime(GAME_TICK_MS);
+                    
+                    if (!removedPieces.empty())
+                    {
+                        std::cout << "[ROOM " << room.getId() << "] Capture! Score -> White: " 
+                                  << room.getWhiteScore() << " | Black: " << room.getBlackScore() << std::endl;
+                    }
 
-                    gameEndedBus.publish(
-                        winnerColor.value()
-                    );
+                    broadcastGameState(room.getId());
                 }
-            }
+            );
 
-            broadcastGameState();
-
+            // Reschedule the loop for endless real-time execution
             scheduleGameTick();
         }
     );

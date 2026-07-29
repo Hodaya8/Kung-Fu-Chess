@@ -28,6 +28,19 @@ ClientProtocol::createLoginRequestMessage(
 }
 
 std::string
+ClientProtocol::createFindMatchRequestMessage()
+{
+    const Json request = {
+        {
+            "messageType",
+            "FindMatchRequest"
+        }
+    };
+
+    return request.dump();
+}
+
+std::string
 ClientProtocol::createMoveRequestMessage(
     const Position& source,
     const Position& destination)

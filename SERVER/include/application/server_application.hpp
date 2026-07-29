@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cstddef>
 #include <map>
@@ -12,127 +12,84 @@
 #include "auth/auth_service.hpp"
 #include "database/databaseManager.hpp"
 #include "events/event_bus.hpp"
-#include "game/game_session.hpp"
-#include "model/piece_removed_info.hpp"
+#include "game/room_manager.hpp"
 #include "rating/elo_service.hpp"
-#include "repositories/userRepository.hpp"
-#include "scoring/score_service.hpp"
+#include "database/userRepository.hpp"
 
 class KungFuChessServerApplication
 {
 private:
-    using Server =
-        websocketpp::server<
-            websocketpp::config::asio
-        >;
+    // WebSocket++ type aliases for clean reading
+    using Server = websocketpp::server<websocketpp::config::asio>;
+    using ConnectionHandle = websocketpp::connection_hdl;
 
-    using ConnectionHandle =
-        websocketpp::connection_hdl;
+    // Maps a raw socket connection to our internal client session state
+    using ClientMap = std::map<ConnectionHandle, ClientState, std::owner_less<ConnectionHandle>>;
 
+    // Internal event fired when a user requests to enter the matchmaking queue
+    struct FindMatchRequestedEvent
+    {
+        int userId = 0;
+        int rating = 0;
+    };
+
+    // Fulfills college requirement: Real-time game loop runs every 20ms (50 FPS)
     static constexpr int GAME_TICK_MS = 20;
 
-    int port;
+    int port = 9000;
 
+    // Core infrastructure services
     DatabaseManager databaseManager;
     UserRepository userRepository;
     AuthService authService;
-
     Server server;
-    GameSession game;
-
-    EventBus<PieceRemovedInfo>
-        pieceRemovedBus;
-
-    EventBus<Color>
-        gameEndedBus;
-
-    ScoreService scoreService;
+    RoomManager roomManager;
     EloService eloService;
 
-    bool gameEndEventPublished = false;
+    // Event buses for async matchmaking notifications
+    EventBus<FindMatchRequestedEvent> findMatchRequestedBus;
+    EventBus<MatchResult> matchFoundBus;
 
-    std::map<
-        ConnectionHandle,
-        ClientState,
-        std::owner_less<ConnectionHandle>
-    > clients;
+    // Active connected clients repository
+    ClientMap clients;
 
+    // Server configuration and networking lifecycle
     void configureServer();
+    void onOpen(ConnectionHandle connection);
+    void onClose(ConnectionHandle connection);
+    void onMessage(ConnectionHandle connection, Server::message_ptr message);
 
-    void onOpen(
-        ConnectionHandle connection
-    );
+    // Incoming network request handlers
+    void handleLoginRequest(ConnectionHandle connection, const std::string& message);
+    void handleFindMatchRequest(ConnectionHandle connection);
+    void handleMoveRequest(ConnectionHandle connection, const std::string& message);
+    void handleJumpRequest(ConnectionHandle connection, const std::string& message);
 
-    void onClose(
-        ConnectionHandle connection
-    );
+    // Internal event bus handlers
+    void handleFindMatchRequested(const FindMatchRequestedEvent& event);
+    void handleMatchFound(const MatchResult& match);
+    void handleGameEnded(int roomId, Color winnerColor);
 
-    void onMessage(
-        ConnectionHandle connection,
-        Server::message_ptr message
-    );
+    // Lookup helpers and telemetry
+    ClientMap::iterator findClientByUserId(int userId);
+    bool isUsernameConnected(const std::string& username) const;
+    std::size_t loggedInPlayerCount() const;
 
-    void handleLoginRequest(
-        ConnectionHandle connection,
-        const std::string& message
-    );
+    // Outgoing communication helpers
+    void broadcastGameState(int roomId);
+    void sendTextMessage(ConnectionHandle connection, const std::string& message);
+    void sendLoginRejected(ConnectionHandle connection, const std::string& reason);
 
-    void handleMoveRequest(
-        ConnectionHandle connection,
-        const std::string& message
-    );
-
-    void handleJumpRequest(
-        ConnectionHandle connection,
-        const std::string& message
-    );
-
-    void handleGameEnded(
-        Color winnerColor
-    );
-
-    bool isSideAssigned(
-        Color playerColor
-    ) const;
-
-    bool isUsernameConnected(
-        const std::string& username
-    ) const;
-
-    std::size_t
-    loggedInPlayerCount() const;
-
-    void broadcastGameState();
-
-    void sendTextMessage(
-        ConnectionHandle connection,
-        const std::string& message
-    );
-
-    void sendLoginRejected(
-        ConnectionHandle connection,
-        const std::string& reason
-    );
-
-    void closeFullConnection(
-        ConnectionHandle connection
-    );
-
+    // Real-time engine clock
     void scheduleGameTick();
 
 public:
-    KungFuChessServerApplication(
-        int port,
-        const std::string& databasePath
-    );
+    KungFuChessServerApplication(int port, const std::string& databasePath);
 
+    // Starts the database, binds to the network port, and blocks running the server loop
     int run();
 
-    KungFuChessServerApplication(
-        const KungFuChessServerApplication&
-    ) = delete;
-
-    KungFuChessServerApplication& operator=(
-        const KungFuChessServerApplication&
-    ) = delete;
+    // Prevent copying the entire server application
+    KungFuChessServerApplication(const KungFuChessServerApplication&) = delete;
+    KungFuChessServerApplication& operator=(const KungFuChessServerApplication&) = delete;
 };

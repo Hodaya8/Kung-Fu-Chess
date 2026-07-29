@@ -162,3 +162,11 @@ target_compile_definitions(
     ASIO_STANDALONE
     _WEBSOCKETPP_CPP11_STL_
 )
+
+if(MSVC)
+    target_compile_options(
+        ${PROJECT_NAME}
+        PRIVATE
+        /FS
+    )
+endif()

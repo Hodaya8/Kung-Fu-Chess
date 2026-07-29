@@ -3,82 +3,52 @@
 #include <optional>
 #include <string>
 
-AuthService::AuthService(
-    UserRepository& userRepository)
+AuthService::AuthService(UserRepository& userRepository)
     : userRepository(userRepository)
 {
 }
 
-AuthResult AuthService::loginOrRegister(
-    const std::string& username,
-    const std::string& password)
+AuthResult AuthService::loginOrRegister(const std::string& username, const std::string& password)
 {
-    if (
-        username.empty() ||
-        password.empty()
-    )
+    //Validate that the input strings are not empty
+    if (username.empty() || password.empty())
     {
-        return AuthResult{
-            AuthStatus::InvalidInput,
-            User{}
-        };
+        return AuthResult{AuthStatus::InvalidInput, User{}};
     }
 
-    const std::optional<User> existingUser =
-        userRepository.findByUsername(
-            username
-        );
+    //Search SQLite database for an existing user with this username
+    const std::optional<User> existingUser = userRepository.findByUsername(username);
 
+    // User exists -> Verify password
     if (existingUser.has_value())
     {
-        if (
-            existingUser->password !=
-            password
-        )
+        // Compare password against the stored hash
+        if (existingUser->passwordHash != password)
         {
-            return AuthResult{
-                AuthStatus::InvalidPassword,
-                User{}
-            };
+            return AuthResult{AuthStatus::InvalidPassword, User{}};
         }
 
-        return AuthResult{
-            AuthStatus::Authenticated,
-            existingUser.value()
-        };
+        // Passwords match -> Return authenticated status and existing user data
+        return AuthResult{AuthStatus::Authenticated, existingUser.value()};
     }
 
-    User newUser;
+    // User does not exist -> Create a new user account with initial ELO rating (1200)
+    User newUser(0, username, password, User::INITIAL_RATING);
 
-    newUser.username = username;
-    newUser.password = password;
-    newUser.rating =
-        User::INITIAL_RATING;
-
-    if (!userRepository.addUser(
-            newUser))
+    // Attempt to save the new user into the database
+    if (!userRepository.addUser(newUser))
     {
-        return AuthResult{
-            AuthStatus::DatabaseError,
-            User{}
-        };
+        return AuthResult{AuthStatus::DatabaseError, User{}};
     }
 
-    const std::optional<User> createdUser =
-        userRepository.findByUsername(
-            username
-        );
+    //Fetch the newly inserted user from DB to obtain their auto-generated SQLite ID
+    const std::optional<User> createdUser = userRepository.findByUsername(username);
 
     if (!createdUser.has_value())
     {
-        return AuthResult{
-            AuthStatus::DatabaseError,
-            User{}
-        };
+        return AuthResult{AuthStatus::DatabaseError, User{}};
     }
 
-    return AuthResult{
-        AuthStatus::Registered,
-        createdUser.value()
-    };
+    // Registration successful -> Return registered status and full user profile
+    return AuthResult{AuthStatus::Registered, createdUser.value()};
 }

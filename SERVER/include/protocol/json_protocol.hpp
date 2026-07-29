@@ -8,6 +8,7 @@
 
 namespace JsonProtocol
 {
+    // Structures representing parsed client requests
     struct LoginRequest
     {
         std::string username;
@@ -25,42 +26,23 @@ namespace JsonProtocol
         Position cell;
     };
 
-    std::string getMessageType(
-        const std::string& message
-    );
+    // Extracts the "messageType" string from a raw JSON message
+    std::string getMessageType(const std::string& message);
 
-    LoginRequest parseLoginRequest(
-        const std::string& message
-    );
+    // Parsing functions (JSON string -> C++ Structs)
+    LoginRequest parseLoginRequest(const std::string& message);
+    MoveRequest parseMoveRequest(const std::string& message);
+    JumpRequest parseJumpRequest(const std::string& message);
 
-    MoveRequest parseMoveRequest(
-        const std::string& message
-    );
-
-    JumpRequest parseJumpRequest(
-        const std::string& message
-    );
-
-    std::string createLoginAcceptedMessage(
-        const std::string& username,
-        int rating,
-        bool registered
-    );
-
-    std::string createLoginRejectedMessage(
-        const std::string& reason
-    );
-
+    // Serialization functions (C++ Data -> JSON string responses)
+    std::string createLoginAcceptedMessage(const std::string& username, int rating, bool registered);
+    std::string createLoginRejectedMessage(const std::string& reason);
+    std::string createWaitingForMatchMessage();
+    std::string createMatchFoundMessage(int roomId, Color playerColor);
     std::string createGameStateMessage(
         const GameSnapshot& snapshot,
         bool gameOver,
         int whiteScore,
         int blackScore
     );
-
-    std::string createPlayerAssignedMessage(
-        Color playerColor
-    );
-
-    std::string createGameFullMessage();
 }

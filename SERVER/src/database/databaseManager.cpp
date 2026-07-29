@@ -3,51 +3,39 @@
 #include <iostream>
 #include <utility>
 
-DatabaseManager::DatabaseManager(
-    std::string databasePath)
+DatabaseManager::DatabaseManager(std::string databasePath)
     : database(nullptr),
-      databasePath(
-          std::move(databasePath)
-      )
+      databasePath(std::move(databasePath))
 {
 }
 
 DatabaseManager::~DatabaseManager()
 {
+    // Ensure the database is safely closed when the manager is destroyed
     if (database)
     {
         sqlite3_close(database);
         database = nullptr;
-
-        std::cout
-            << "[DATABASE] Connection closed."
-            << std::endl;
+        std::cout << "[DATABASE] Connection closed." << std::endl;
     }
 }
 
 bool DatabaseManager::init()
 {
+    // Avoid re-opening if the connection is already active
     if (database)
     {
         return true;
     }
 
-    const int result =
-        sqlite3_open(
-            databasePath.c_str(),
-            &database
-        );
+    // Attempt to open the SQLite database file
+    const int result = sqlite3_open(databasePath.c_str(), &database);
 
     if (result != SQLITE_OK)
     {
-        std::cerr
-            << "[DATABASE] Could not open database: "
-            << (
-                database
-                    ? sqlite3_errmsg(database)
-                    : "Unknown error"
-            )
-            << std::endl;
+        std::cerr << "[DATABASE] Could not open database: "
+                  << (database ? sqlite3_errmsg(database) : "Unknown error")
+                  << std::endl;
 
         if (database)
         {
@@ -58,11 +46,7 @@ bool DatabaseManager::init()
         return false;
     }
 
-    std::cout
-        << "[DATABASE] Opened: "
-        << databasePath
-        << std::endl;
-
+    std::cout << "[DATABASE] Opened: " << databasePath << std::endl;
     return true;
 }
 

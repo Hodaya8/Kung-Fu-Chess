@@ -7,27 +7,29 @@
 class DatabaseManager
 {
 private:
-    sqlite3* database;
+    // Raw pointer to the internal SQLite database connection
+    sqlite3* database = nullptr;
+    
+    // File path to the SQLite database
     std::string databasePath;
 
 public:
-    explicit DatabaseManager(
-        std::string databasePath
-    );
+    //constructor
+    explicit DatabaseManager(std::string databasePath);
 
+    // Destructor ensures the SQLite connection is safely closed
     ~DatabaseManager();
 
-    DatabaseManager(
-        const DatabaseManager&
-    ) = delete;
+    // Prevent copying
+    DatabaseManager(const DatabaseManager&) = delete;
+    DatabaseManager& operator=(const DatabaseManager&) = delete;
 
-    DatabaseManager& operator=(
-        const DatabaseManager&
-    ) = delete;
-
+    // Opens the database file and initializes the connection
     bool init();
 
+    // Returns the raw SQLite pointer for repositories to execute queries
     sqlite3* getConnection() const;
 
+    // Checks if the database connection is currently active and valid
     bool isOpen() const;
 };
