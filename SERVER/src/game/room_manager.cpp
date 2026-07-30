@@ -7,6 +7,8 @@
 RoomManager::RoomManager()
     : nextRoomId(1)
 {
+    // Connect to Redis as soon as the manager is created in the server
+    redis.connect();
 }
 
 GameRoom& RoomManager::createRoom()
@@ -19,6 +21,7 @@ GameRoom& RoomManager::createRoom()
 
     // Keep a reference before moving ownership into the map
     GameRoom& createdRoom = *room;
+    
     //inserting the roon into the the rooms map
     rooms.emplace(roomId, std::move(room));
 
@@ -83,59 +86,47 @@ std::optional<MatchResult> RoomManager::addWaitingPlayer(int userId, int rating)
         return std::nullopt;
     }
 
-    //Find a player within +-100 ELO range
+    // Fetch all waiting players from Redis
+    auto waitingPlayers = redis.getAllWaitingPlayers();
+
+    // Search for an ELO match from the retrieved data
     const auto matchingPlayer = std::find_if(
         waitingPlayers.begin(),
         waitingPlayers.end(),
-        [rating](const WaitingPlayer& player)
+        [rating](const std::pair<const int, int>& player)
         {
-            const int difference = std::abs(player.rating - rating);
+            const int difference = std::abs(player.second - rating);
             return difference <= MAX_RATING_DIFFERENCE;
         }
     );
 
-    // If nobody is compatible, join the waiting queue
+    // No match found - the player is pushed to Redis
     if (matchingPlayer == waitingPlayers.end())
     {
-        waitingPlayers.push_back({userId, rating});
+        redis.setWaitingPlayer(userId, rating);
         return std::nullopt;
     }
 
-    // A match was found- Pair them up and remove the opponent from the queue
-    const MatchResult result{matchingPlayer->userId, userId};
-    waitingPlayers.erase(matchingPlayer);
+    // Match found! Remove the opponent from Redis and return the pair
+    const MatchResult result{matchingPlayer->first, userId};
+    redis.removeWaitingPlayer(matchingPlayer->first);
 
     return result;
 }
 
 void RoomManager::removeWaitingPlayer(int userId)
 {
-    auto it = std::remove_if(
-        waitingPlayers.begin(),
-        waitingPlayers.end(),
-        [userId](const WaitingPlayer& player)
-        {
-            return player.userId == userId;
-        }
-    );
-
-    waitingPlayers.erase(it, waitingPlayers.end());
+    // Direct deletion from the Hash
+    redis.removeWaitingPlayer(userId);
 }
 
 bool RoomManager::isWaiting(int userId) const
 {
-    // Check if any player in the queue has this userId
-    return std::any_of(
-        waitingPlayers.begin(),
-        waitingPlayers.end(),
-        [userId](const WaitingPlayer& player)
-        {
-            return player.userId == userId;
-        }
-    );
+    // Direct check against the Hash
+    return redis.isPlayerWaiting(userId);
 }
 
 std::size_t RoomManager::getWaitingCount() const
 {
-    return waitingPlayers.size();
+    return redis.getWaitingCount();
 }

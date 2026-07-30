@@ -24,5 +24,10 @@ struct User
     }
 
     // Equality operator to compare two User objects 
-    bool operator==(const User& other) const = default;
+    bool operator==(const User& other) const {
+    return id == other.id && 
+           username == other.username && 
+           passwordHash == other.passwordHash && 
+           rating == other.rating;
+}
 };

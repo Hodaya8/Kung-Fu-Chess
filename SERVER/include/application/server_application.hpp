@@ -4,17 +4,16 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <functional> // For std::hash
 
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
 #include "application/client_state.hpp"
-#include "auth/auth_service.hpp"
-#include "database/databaseManager.hpp"
+#include "database/redis_manager.hpp"
 #include "events/event_bus.hpp"
 #include "game/room_manager.hpp"
 #include "rating/elo_service.hpp"
-#include "database/userRepository.hpp"
 
 class KungFuChessServerApplication
 {
@@ -39,12 +38,9 @@ private:
     int port = 9000;
 
     // Core infrastructure services
-    DatabaseManager databaseManager;
-    UserRepository userRepository;
-    AuthService authService;
+    RedisManager redisManager;
     Server server;
     RoomManager roomManager;
-    EloService eloService;
 
     // Event buses for async matchmaking notifications
     EventBus<FindMatchRequestedEvent> findMatchRequestedBus;
@@ -84,9 +80,10 @@ private:
     void scheduleGameTick();
 
 public:
-    KungFuChessServerApplication(int port, const std::string& databasePath);
+    // Constructor updated to remove database path parameter
+    KungFuChessServerApplication(int port);
 
-    // Starts the database, binds to the network port, and blocks running the server loop
+    // Starts Redis, binds to the network port, and blocks running the server loop
     int run();
 
     // Prevent copying the entire server application

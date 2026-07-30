@@ -1,4 +1,4 @@
-#include "io\board_parser.hpp"
+#include "io/board_parser.hpp"
 
 #include <sstream>
 #include <vector>

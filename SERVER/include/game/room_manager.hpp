@@ -5,9 +5,9 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <vector>
 
 #include "game/game_room.hpp"
+#include "database/redis_manager.hpp" // Added Redis manager
 
 // Holds the IDs of two matched players ready to start a game
 struct MatchResult
@@ -60,20 +60,13 @@ public:
 private:
     // Fulfills the college requirement: Maximum allowed ELO difference for matchmaking
     static constexpr int MAX_RATING_DIFFERENCE = 100;
-
-    // Internal structure representing a player in the matchmaking queue
-    struct WaitingPlayer
-    {
-        int userId = 0;
-        int rating = 0;
-    };
-
+    
     // Incremental counter to generate unique room IDs
     int nextRoomId = 1;
 
     // Map storing room IDs as keys and exclusive pointers to rooms as values
     std::map<int, std::unique_ptr<GameRoom>> rooms;
 
-    // Queue of players currently searching for an opponent
-    std::vector<WaitingPlayer> waitingPlayers;
+    // The local vector (WaitingPlayer) was removed. Instead, we use the Redis manager:
+    RedisManager redis;
 };

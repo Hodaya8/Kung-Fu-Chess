@@ -1,5 +1,4 @@
 ﻿#include "application/server_application.hpp"
-
 #include <exception>
 #include <iostream>
 #include <stdexcept>
@@ -7,33 +6,9 @@
 
 #include "protocol/json_protocol.hpp"
 
-namespace
-{
-    //Converts internal authentication enum errors to readable protocol strings
-    std::string authFailureReason(AuthStatus status)
-    {
-        switch (status)
-        {
-            case AuthStatus::InvalidPassword:
-                return "InvalidPassword";
-            case AuthStatus::InvalidInput:
-                return "InvalidInput";
-            case AuthStatus::DatabaseError:
-                return "DatabaseError";
-            case AuthStatus::Authenticated:
-            case AuthStatus::Registered:
-                return "Unknown";
-        }
-        return "Unknown";
-    }
-}
-
-//constructor
-KungFuChessServerApplication::KungFuChessServerApplication(int port, const std::string& databasePath)
-    : port(port),
-      databaseManager(databasePath),
-      userRepository(databaseManager),
-      authService(userRepository)
+// constructor
+KungFuChessServerApplication::KungFuChessServerApplication(int port)
+    : port(port)
 {
     // Wire up internal event buses using lambdas
     findMatchRequestedBus.subscribe(
@@ -68,11 +43,11 @@ int KungFuChessServerApplication::run()
 {
     try
     {
-        // 1. Initialize SQLite Database
-        if (!databaseManager.init() || !userRepository.createTable())
+        // 1. Initialize Redis connection for session management and matchmaking
+        if (!redisManager.connect())
         {
-            std::cerr << "[SERVER ERROR] Failed to initialize database." << std::endl;
-            return 1;
+            std::cerr << "[SERVER ERROR] Failed to initialize Redis." << std::endl;
+            return 1; // Server will not start if Redis connection fails
         }
 
         // 2. Configure and bind WebSocket server
@@ -178,6 +153,19 @@ void KungFuChessServerApplication::handleLoginRequest(ConnectionHandle connectio
 
     const JsonProtocol::LoginRequest request = JsonProtocol::parseLoginRequest(message);
 
+    // In the new microservice architecture, the client sends the API Gateway Token inside the password field
+    const std::string providedToken = request.password; 
+    const std::string redisKey = "session:" + providedToken;
+    
+    // Verify the token in Redis to ensure the user authenticated via the Python API
+    const std::string usernameFromRedis = redisManager.get(redisKey); 
+
+    if (usernameFromRedis.empty() || usernameFromRedis != request.username)
+    {
+        sendLoginRejected(connection, "InvalidToken");
+        return;
+    }
+
     // Prevent double logins from the same account
     if (isUsernameConnected(request.username))
     {
@@ -185,31 +173,21 @@ void KungFuChessServerApplication::handleLoginRequest(ConnectionHandle connectio
         return;
     }
 
-    const AuthResult authResult = authService.loginOrRegister(request.username, request.password);
-
-    if (!authResult.isSuccess())
-    {
-        sendLoginRejected(connection, authFailureReason(authResult.status));
-        return;
-    }
-
     // Populate session state
-    clientState.userId = authResult.user.id;
-    clientState.username = authResult.user.username;
-    clientState.rating = authResult.user.rating;
+    // Generate a pseudo-unique ID based on the username hash, as the DB is managed by the API Gateway
+    clientState.userId = std::hash<std::string>{}(request.username); 
+    clientState.username = request.username;
+    clientState.rating = 1200; // Defaulting to 1200. Future improvement: fetch ELO from Redis cache.
     clientState.roomId.reset();
     clientState.playerColor.reset();
     clientState.loggedIn = true;
 
-    const bool registered = (authResult.status == AuthStatus::Registered);
-
     sendTextMessage(
         connection,
-        JsonProtocol::createLoginAcceptedMessage(clientState.username, clientState.rating, registered)
+        JsonProtocol::createLoginAcceptedMessage(clientState.username, clientState.rating, false)
     );
 
-    std::cout << "[AUTH] User " << (registered ? "registered" : "logged in") 
-              << ": " << clientState.username << " (ELO: " << clientState.rating << ")" << std::endl;
+    std::cout << "[AUTH] User authenticated via API Gateway Token: " << clientState.username << std::endl;
 }
 
 void KungFuChessServerApplication::handleFindMatchRequest(ConnectionHandle connection)
@@ -376,22 +354,22 @@ void KungFuChessServerApplication::handleGameEnded(int roomId, Color winnerColor
     const int prevBlackRating = blackPlayer->rating;
 
     // Calculate new ELO ratings mathematically
-    const EloResult newRatings = eloService.calculateRatings(prevWhiteRating, prevBlackRating, winnerColor);
-
-    // Persist new ratings to SQLite database
-    const bool whiteSaved = userRepository.updateRating(whitePlayer->userId, newRatings.whiteRating);
-    const bool blackSaved = userRepository.updateRating(blackPlayer->userId, newRatings.blackRating);
-
-    if (!whiteSaved || !blackSaved)
-    {
-        std::cerr << "[ROOM " << roomId << "] Error: Failed to save updated ELO to database." << std::endl;
-        return;
+    GameResult gameRes;
+    if (winnerColor == Color::WHITE) {
+        gameRes = GameResult::WHITE_WIN;
+    } else if (winnerColor == Color::BLACK) {
+        gameRes = GameResult::BLACK_WIN;
+    } else {
+        gameRes = GameResult::DRAW;
     }
 
+    const EloResult newRatings = EloService::calculateRatings(prevWhiteRating, prevBlackRating, gameRes);
+    
+    // Update ELO locally in memory for the current session
     whitePlayer->rating = newRatings.whiteRating;
     blackPlayer->rating = newRatings.blackRating;
 
-    std::cout << "[ROOM " << roomId << "] Game Ended. ELO Updates:\n"
+    std::cout << "[ROOM " << roomId << "] Game Ended. ELO Updates (In-Memory):\n"
               << "  -> White (" << whitePlayer->username << "): " << prevWhiteRating << " -> " << whitePlayer->rating << "\n"
               << "  -> Black (" << blackPlayer->username << "): " << prevBlackRating << " -> " << blackPlayer->rating << std::endl;
 }
