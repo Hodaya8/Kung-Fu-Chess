@@ -51,42 +51,27 @@ Starting the entire microservices environment requires only a single command. Op
 
 ```bash
 docker-compose up --build -d
+```
 
 This command will automatically:
-
-Pull required images (Ubuntu, Python, Postgres, Redis).
-
-Compile the C++ Game Server and Logic Library using CMake.
-
-Install Python dependencies for the API Gateway.
-
-Launch and link all 4 containers in the correct order.
+1. Pull required images (Ubuntu, Python, Postgres, Redis).
+2. Compile the C++ Game Server and Logic Library using CMake.
+3. Install Python dependencies for the API Gateway.
+4. Launch and link all 4 containers in the correct order.
 
 The services will be available at:
+* **API Gateway (HTTP):** `http://localhost:8000`
+* **Game Server (WebSocket):** `ws://localhost:9000`
 
-API Gateway (HTTP): http://localhost:8000
-
-Game Server (WebSocket): ws://localhost:9000
-
-Checking Logs
+### Checking Logs
 To view live logs from the game server or API:
-
-Bash
+```bash
 docker logs -f kungfu_server
 docker logs -f kungfu_api_gateway
-📁 Repository Structure
-/API_GATEWAY - Python FastAPI REST server and database initialization.
+```
 
-/SERVER - C++ WebSocket server, Redis integration, and Room Management.
-
-/LOGIC - Core chess rules, piece movement algorithms, and ELO calculations.
-
-docker-compose.yml - Container orchestration and network configuration.
-
-
-אחרי שאת שומרת את הקובץ בתיקייה הראשית (איפה שנמצא ה-`docker-compose.yml`), תוכלי להעתיק ולהדביק את הבלוק הבא ישירות לטרמינל כדי לדחוף את הכל לגיט במכה אחת:
-
-```bash
-git add .
-git commit -m "Docs & Refactor: Migrate to Microservices architecture with Redis tokens and add professional README"
-git push
+## 📁 Repository Structure
+* `/API_GATEWAY` - Python FastAPI REST server and database initialization.
+* `/SERVER` - C++ WebSocket server, Redis integration, and Room Management.
+* `/LOGIC` - Core chess rules, piece movement algorithms, and ELO calculations.
+* `docker-compose.yml` - Container orchestration and network configuration.
