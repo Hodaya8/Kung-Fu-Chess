@@ -17,7 +17,7 @@ namespace
         "8000";
 
     const std::string ASSETS_DIRECTORY =
-        R"(C:\Users\USER\Desktop\chess game\UI\asset)";
+        "asset";
 }
 
 int main()
