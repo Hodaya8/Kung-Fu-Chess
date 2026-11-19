@@ -23,7 +23,7 @@ services:
     build: .
     container_name: kungfu_server
     ports:
-      - "9002:9002"
+      - "9000:9000"
     environment:
       - DB_HOST=db
       - DB_PORT=5432

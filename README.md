@@ -1,11 +1,11 @@
-# ♟️ KungFu Chess - Real-Time Multiplayer System
+# KungFu Chess - Real-Time Multiplayer System
 
-## 📌 Overview
+## Overview
 KungFu Chess is an advanced, real-time multiplayer chess platform built as a graduation project in Software Engineering. 
 
-Unlike traditional turn-based chess, this system operates on a real-time game engine tick (50 FPS) and implements a modern **Microservices Architecture**. The backend is fully containerized using Docker, demonstrating high scalability, separation of concerns, and stateless session management.
+Unlike traditional turn-based chess, this system operates on a real-time game engine tick and implements a modern **Microservices Architecture**. The backend is fully containerized using Docker, demonstrating high scalability, separation of concerns, and stateless session management.
 
-## 🏗️ System Architecture & Microservices
+## System Architecture & Microservices
 
 The backend infrastructure is divided into decoupled services communicating over a private Docker network:
 
@@ -27,20 +27,20 @@ The backend infrastructure is divided into decoupled services communicating over
 4. **Persistent Storage (PostgreSQL):**
    * Securely stores user credentials, profiles, and ELO ratings.
 
-## 🚀 Key Features
+## Key Features
 * **Microservices Design:** Complete separation between RESTful API services and real-time WebSocket gameplay.
 * **Stateless Authentication:** Secure session management using Redis-based tokens.
 * **Live Matchmaking:** ELO-based matchmaking system.
 * **Real-Time Engine:** Asynchronous C++ game loop capable of handling simultaneous game rooms.
 * **Containerization:** Fully automated build and deployment pipeline using Docker Compose.
 
-## 💻 Tech Stack
+## Tech Stack
 * **Game Server:** C++17, CMake, Asio, WebSocket++, nlohmann/json.
 * **API Gateway:** Python 3.11, FastAPI, Uvicorn, psycopg2.
 * **Databases:** PostgreSQL (Relational), Redis (In-Memory Data Structure Store).
 * **DevOps:** Docker, Docker Compose.
 
-## ⚙️ Getting Started
+## Getting Started
 
 ### Prerequisites
 * Docker
